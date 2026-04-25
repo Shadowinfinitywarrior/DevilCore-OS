@@ -10,37 +10,30 @@ global kernel_task_init
 
 extern current_task_info
 
-; void switch_context(task_t *old, task_t *new)
+; void switch_context(uint8_t **old_sp, uint8_t *new_sp)
 switch_context:
+    ; Push all callee-saved registers onto the current stack
     push rbp
-    mov rbp, rsp
-    
     push rbx
     push r12
     push r13
     push r14
     push r15
     
-    ; Save current FPU state
-    fnsave [rdi]
+    ; Save current RSP in *old_sp (RDI)
+    mov [rdi], rsp
     
-    ; Save RSP
-    mov rax, [rdi + 32]      ; rsp offset in task struct
-    mov [rax], rsp
+    ; Load new RSP from new_sp (RSI)
+    mov rsp, rsi
     
-    ; Load new task
-    mov rsp, [rdx + 32]
-    
-    ; Restore FPU state
-    frstor [rsi]
-    
+    ; Pop callee-saved registers from the new stack
     pop r15
     pop r14
     pop r13
     pop r12
     pop rbx
-    
     pop rbp
+    
     ret
 
 ; void restore_context(task_t *task)

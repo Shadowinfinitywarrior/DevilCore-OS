@@ -37,6 +37,40 @@ void vfs_close(vfs_node_t *node) {
     }
 }
 
+vfs_node_t* vfs_finddir(vfs_node_t *node, char *name) {
+    if (node && node->finddir) {
+        return node->finddir(node, name);
+    }
+    return NULL;
+}
+
+vfs_node_t* vfs_lookup(const char *path) {
+    if (!path || !g_vfs_root) return NULL;
+    if (strcmp(path, "/") == 0) return g_vfs_root;
+
+    /* Skip leading slash */
+    if (*path == '/') path++;
+
+    char name[64];
+    vfs_node_t *curr = g_vfs_root;
+
+    while (*path) {
+        int i = 0;
+        while (*path && *path != '/' && i < 63) {
+            name[i++] = *path++;
+        }
+        name[i] = 0;
+
+        if (*path == '/') path++;
+
+        vfs_node_t *next = vfs_finddir(curr, name);
+        if (!next) return NULL;
+        curr = next;
+    }
+
+    return curr;
+}
+
 /* ==========================================================
  *  Pseudo-Block Device mapping the Raw ATA hard drive
  * ========================================================== */

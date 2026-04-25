@@ -17,9 +17,8 @@ extern syscall_handler
 section .text
 
 syscall_entry:
-    ; Swap GS to get kernel data structure (swapgs) if we came from user mode
-    ; For now we just push the state and call C
-
+    ; Align stack to 16 bytes (we push 15 regs + 1 padding)
+    push 0
     push rcx ; Save return RIP
     push r11 ; Save RFLAGS
     
@@ -31,14 +30,7 @@ syscall_entry:
     push r14
     push r15
     
-    ; Set up the 4th argument (R10 in syscall ABI becomes RCX for C ABI)
-    mov rcx, r10
-    
-    ; RAX is already the syscall number.
-    ; C prototype: uint64_t syscall_handler(uint64_t sys_num, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5, uint64_t arg6);
-    ; But we just let RAX be pushed, wait, we pass it via RDI as 1st arg, and shift everything? 
-    ; Let's just push it all onto a struct and pass the struct pointer.
-
+    ; Save caller-saved registers
     push r9
     push r8
     push r10 ; mapped to arg4 in syscall
@@ -52,18 +44,25 @@ syscall_entry:
     call syscall_handler
     
     ; RAX now contains return value
+    mov [rsp], rax ; Update RAX in the struct so it gets popped back correctly
     
-    add rsp, 56 ; Skip the 7 pushes
-    
+    ; Restore all registers from the potentially modified struct
+    pop rax
+    pop rdi
+    pop rsi
+    pop rdx
+    pop r10
+    pop r8
+    pop r9
     pop r15
     pop r14
     pop r13
     pop r12
     pop rbp
     pop rbx
-    
     pop r11
     pop rcx
+    add rsp, 8 ; Pop the padding
     
     ; Return to user space
     sysretq

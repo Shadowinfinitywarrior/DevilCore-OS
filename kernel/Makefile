@@ -27,7 +27,20 @@ KERNEL_SRC = \
 	crypto/sha256.c \
 	lib/string.c \
 	lib/printf.c \
-	syscall/syscall_table.c
+	syscall/syscall_table.c \
+	diag/diag.c \
+	diag/diag_cpu.c \
+	diag/diag_memory.c \
+	diag/diag_process.c \
+	diag/diag_fs.c \
+	diag/diag_graphics.c \
+	diag/diag_io.c \
+	diag/diag_security.c \
+	diag/diag_ipc.c \
+	diag/diag_timing.c \
+	diag/diag_network.c \
+	diag/diag_debug.c \
+	diag/diag_extra.c
 
 KERNEL_OBJ = $(KERNEL_SRC:.c=.o)
 ASM_OBJ = \

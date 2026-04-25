@@ -22,6 +22,7 @@ typedef struct vfs_node {
     /* FS Operations */
     int (*read)(struct vfs_node *node, uint32_t offset, uint32_t size, uint8_t *buffer);
     int (*write)(struct vfs_node *node, uint32_t offset, uint32_t size, uint8_t *buffer);
+    struct vfs_node* (*finddir)(struct vfs_node *node, char *name);
     void (*close)(struct vfs_node *node);
 } vfs_node_t;
 
@@ -34,6 +35,8 @@ void vfs_mount_root(vfs_node_t *node);
 /* Standard File API */
 int vfs_read(vfs_node_t *node, uint32_t offset, uint32_t size, uint8_t *buffer);
 int vfs_write(vfs_node_t *node, uint32_t offset, uint32_t size, uint8_t *buffer);
+vfs_node_t* vfs_finddir(vfs_node_t *node, char *name);
+vfs_node_t* vfs_lookup(const char *path);
 void vfs_close(vfs_node_t *node);
 
 #endif /* DC_VFS_H */

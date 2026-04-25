@@ -21,6 +21,7 @@ extern long sys_bind(uint64_t sockfd, uint64_t addr, uint64_t addrlen);
 extern long sys_connect(uint64_t sockfd, uint64_t addr, uint64_t addrlen);
 extern long sys_listen(uint64_t sockfd, uint64_t backlog);
 extern long sys_accept(uint64_t sockfd, uint64_t addr, uint64_t addrlen);
+extern long sys_diag(uint64_t category, uint64_t subcmd, uint64_t buf, uint64_t size);
 
 static syscall_handler_t syscall_table[NR_SYSCALLS] = {
     [SYS_read]        = (syscall_handler_t)sys_read,
@@ -39,6 +40,7 @@ static syscall_handler_t syscall_table[NR_SYSCALLS] = {
     [SYS_connect]    = (syscall_handler_t)sys_connect,
     [SYS_listen]     = (syscall_handler_t)sys_listen,
     [SYS_accept]     = (syscall_handler_t)sys_accept,
+    [SYS_DIAG]       = (syscall_handler_t)sys_diag,
 };
 
 void *get_syscall_handler(long num) {

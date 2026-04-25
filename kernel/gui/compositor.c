@@ -3,8 +3,7 @@
  * Double-buffered software renderer for 32bpp linear framebuffer
  */
 
-#include <stdint.h>
-#include <stddef.h>
+#include "include/types.h"
 #include "compositor.h"
 #include "font.h"
 

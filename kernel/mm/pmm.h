@@ -7,8 +7,12 @@
 #include "../include/types.h"
 
 #define PAGE_SIZE 4096
+#ifndef ALIGN_UP
 #define ALIGN_UP(s, a)   (((s) + (a) - 1) & ~((a) - 1))
+#endif
+#ifndef ALIGN_DOWN
 #define ALIGN_DOWN(s, a) ((s) & ~((a) - 1))
+#endif
 
 /* Initialize the PMM using the maximum memory given by the bootloader */
 void pmm_init(uint64_t mem_size);

@@ -20,7 +20,11 @@
 /* Initialize Virtual Memory Manager */
 void vmm_init(void);
 
-/* Map a virtual page to a physical frame with specific flags */
+uint64_t vmm_create_address_space(void);
+void     vmm_switch_pml4(uint64_t phys);
+
+/* Map a virtual page to a physical frame in specific or current space */
+void vmm_map_page_in(uint64_t pml4_phys, uint64_t virt_addr, uint64_t phys_addr, uint64_t flags);
 void vmm_map_page(uint64_t virt_addr, uint64_t phys_addr, uint64_t flags);
 
 /* Unmap a virtual page */

@@ -1,10 +1,9 @@
-/* DevilCore OS Linker Script - Multiboot2 ELF32
+/* DevilCore OS Linker Script - Multiboot 1 ELF32
  * Kernel loads at 1MB (0x100000)
- * .multiboot2 section MUST be within first 32KB of the image for GRUB
  */
 
-OUTPUT_FORMAT("elf64-x86-64")
-OUTPUT_ARCH(i386:x86-64)
+OUTPUT_FORMAT("elf32-i386")
+OUTPUT_ARCH(i386)
 ENTRY(_start)
 
 SECTIONS
@@ -12,19 +11,14 @@ SECTIONS
     /* Load at 1MB physical */
     . = 0x100000;
 
-    /* Multiboot2 header must be first */
-    .multiboot2 ALIGN(8) :
-    {
-        KEEP(*(.multiboot2))
-    }
-
-    /* Code */
     .text ALIGN(4096) :
     {
+        /* Multiboot 1 header MUST be early */
+        *(.multiboot)
         *(.text*)
     }
 
-    /* Read-only data (font, strings, ISR table) */
+    /* Read-only data (font, strings, etc) */
     .rodata ALIGN(4096) :
     {
         *(.rodata*)
@@ -36,13 +30,17 @@ SECTIONS
         *(.data*)
     }
 
-    /* Uninitialized data */
+    /* Uninitialized data and stack */
     .bss ALIGN(4096) :
     {
         *(COMMON)
         *(.bss*)
+        
+        /* Define heap start at end of BSS */
+        . = ALIGN(4096);
+        __heap_base = .;
     }
 
-    /* Mark kernel end for PMM */
+    /* Mark kernel end */
     _kernel_end = ALIGN(4096);
 }

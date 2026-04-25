@@ -9,6 +9,7 @@
 void sched_init(thread_t *first_thread);
 void sched_add_thread(thread_t *t);
 thread_t *sched_get_current(void);
+thread_t *sched_get_thread_queue(void);  /* Diagnostic helper */
 
 /* Invoked by the timer interrupt to preempt the current thread */
 void sched_tick(void);

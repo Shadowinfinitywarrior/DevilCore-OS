@@ -40,6 +40,7 @@
 #include "fs/vfs.h"
 #include "net/net.h"
 #include "security/privacy_hub.h"
+#include "diag/diag.h"
 
 /* ================================================================
  *  SECTION 1: MULTIBOOT2 PARSER
@@ -68,6 +69,9 @@ struct mb2_tag_mmap {
 
 static uint64_t g_mem_total = 256*1024*1024ULL;
 static uint8_t  g_rpos = 16, g_gpos = 8, g_bpos = 0;
+
+/* Exported for diagnostics */
+uint64_t g_total_memory_bytes = 0;
 
 /* Temporaries filled by mb2_parse, consumed by kernel_main */
 static volatile uint8_t *g_fb_addr = 0;
@@ -104,6 +108,7 @@ static void mb2_parse(uint64_t mb2_addr) {
             
             /* Initialize PMM with total memory */
             pmm_init(g_mem_total);
+            g_total_memory_bytes = g_mem_total;
 
             /* Mark available memory regions in the PMM */
             for (uint32_t i = 0; i < n; i++) {
@@ -1022,6 +1027,9 @@ void kernel_main(uint64_t mb2_magic, uint64_t mb2_addr) {
 
     /* Initialize MSRs for syscalls */
     syscall_init();
+
+    /* Initialize Diagnostic Subsystem */
+    diag_init();
 
     /* Initialize Hardware Bus and Storage */
     pci_init();

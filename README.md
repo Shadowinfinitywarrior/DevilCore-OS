@@ -1,71 +1,128 @@
-# DevilCore OS v3.0 - Complete
+# 👿 DevilCore OS
+**A Privacy-Focused, Ethical Hacking Operating System built from Scratch.**
 
-## Files Created
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-x86_32-blue.svg)](https://github.com/)
 
-| File | Size | Description |
-|------|------|-------------|
-| `DevilCore.iso` | 1.8MB | Bootable CD-ROM |
-| `DevilCore_floppy.img` | 1.44MB | Bootable floppy |
+## 👁️ Overview
+DevilCore is a custom 32-bit monolithic operating system designed for security professionals and privacy enthusiasts. Unlike many "Linux distributions," DevilCore is built entirely from the ground up—from the bootloader entry point to the graphical compositor. 
 
-## Features
+The goal of the project is to provide a minimalist, highly anonymized environment that integrates essential ethical hacking tools directly into a custom kernel and GUI ecosystem.
 
-### Bootloader (Stage 1)
-- 16-bit real mode
-- Shows boot menu
-- Loads kernel from disk
-- Switches to 32-bit protected mode
-- Beep sounds on boot
+---
 
-### Kernel (32-bit)
-- VESA graphics support (800x600x32)
-- GUI Desktop with:
-  - Title bar with "DevilCore OS v3.0"
-  - Desktop icons: My PC, Documents, Calculator, Trash
-  - Taskbar with Start button
-  - Real-time clock
-- Windows system
-- Keyboard driver (PS/2)
-- Mouse support
+## 🏗️ System Architecture
 
-### Apps
-- About window
-- Calculator
-- Documents
-- Help system
+DevilCore follows a **Hybrid Monolithic** design, where essential services like networking, memory management, and process scheduling reside in the kernel for performance, while specialized tools can be loaded modularly.
 
-## Keyboard Shortcuts
-- `A` - About window
-- `C` - Calculator  
-- `D` - Documents
-- `F1` - Help
-
-## Boot
-```bash
-# Floppy (recommended)
-qemu-system-i386 -fda DevilCore_floppy.img -m 256
-
-# CD-ROM
-qemu-system-i386 -cdrom DevilCore.iso -m 256
-
-# VirtualBox
-# New VM → Other/Unknown (32-bit) → Mount DevilCore.iso
+### High-Level Design
+```mermaid
+graph TD
+    UserApps[User Space Applications] --> |DevilUI| Compositor[GUI Compositor]
+    Compositor --> |DevilShell| Shell[Command Interpreter]
+    Shell --> |Syscall Gate| Kernel[DevilKernel Core]
+    
+    subgraph Kernel Space
+        Kernel --> Scheduler[CFS Scheduler]
+        Kernel --> Memory[PMM/VMM Mgr]
+        Kernel --> VFS[Virtual File System]
+        Kernel --> Security[Security Module]
+        Kernel --> Crypto[Crypto Engine]
+    end
+    
+    subgraph Hardware Layer
+        Drivers[Driver Framework] --> Hardware[x86 Hardware]
+        HAL[HAL] --> Drivers
+    end
+    
+    Kernel --> HAL
 ```
 
-## Technical Details
+### 🎯 Design Principles
+1. **Minimal Footprint**: Targeted at < 500MB installation size and < 128MB RAM at idle.
+2. **Privacy by Default**: Zero telemetry. Built-in hooks for kernel-level traffic anonymization.
+3. **Security First**: Mandatory Access Control (MAC) and encrypted journaling filesystem (DevilFS).
+4. **Hacker Friendly**: Built-in specialized toolkit for ethical hacking and network analysis.
 
-- Boot sector: 512 bytes (0x7C00)
-- Kernel: 32KB at 0x10000
-- Bootloader loads sectors 1-64
-- GDT for protected mode
-- A20 line enabled
+---
 
-## Build From Source
+## 🛠️ Current Implementation
 
+### 🚀 Booting & Kernel
+- **Boot Protocol**: Multiboot-compliant. Effortlessly loaded by GRUB.
+- **Video Mode**: Automatically requests a **1024x768 32-bpp** linear framebuffer during boot.
+- **Memory Management**: Implements a kernel heap with block headers and allocation tracking (`__heap_base`).
+- **Interrupts**: Baseline GDT and IDT setup for handle hardware events.
+
+### 🖼️ DevilUI (Graphical Subsystem)
+- **Software Compositor**: A double-buffered rendering engine located in `kernel/gui/compositor.c`. 
+- **Double Buffering**: Prevents screen flickering by rendering to a back-buffer and blitting to VRAM only on frames.
+- **Window Manager**: Supports multiple overlapping windows with managed headers and Z-order.
+- **Typography**: Embedded 8x8 pixel font for native text rendering without external dependencies.
+
+### ⌨️ I/O & Drivers
+- **PS/2 Mouse Driver**: Fully functional polling driver with motion scaling and click detection.
+- **PS/2 Keyboard Driver**: Supports standard US-QWERTY mapping with Shift-state tracking.
+- **I/O Port Wrappers**: Optimized inline assembly for `inb`/`outb` operations.
+
+---
+
+## 📂 Project Structure
+```text
+.
+├── kernel/
+│   ├── kernel_boot.asm      # Multiboot entry point & header
+│   ├── kernel.c             # Main kernel sequence & main loop
+│   ├── include/             # Shared kernel headers
+│   ├── gui/                 # Graphical engine & Window Manager
+│   └── drivers/             # Hardware drivers (PS/2, I/O)
+├── scripts/
+│   ├── build.sh             # Master build script (compiles everything to ISO)
+│   └── run_qemu.sh          # VM execution script
+├── README.md                # This documentation
+└── DevilCore.iso            # The final bootable OS image
+```
+
+---
+
+## 🚀 Getting Started
+
+### 📦 Prerequisites
+You will need the following tools installed on your Linux host:
+- `gcc` & `binutils` (with 32-bit multilib support)
+- `nasm` (Netwide Assembler)
+- `xorriso` & `grub-common` (for ISO creation)
+- `qemu-system-x86` (for emulation)
+
+### 🛠️ Building the OS
+DevilCore uses a simplified build system that orchestrates the assembly and C compilation into a single bootable `DevilCore.iso`.
 ```bash
+# Clone the repository
+git clone https://github.com/your-username/DevilCore.git
 cd DevilCore
-nasm -f bin kernel/bootloader.asm -o build/boot.bin
-nasm -f bin kernel/kernel.asm -o build/kernel.bin
-dd if=/dev/zero of=build/floppy.img bs=1024 count=1440
-dd if=build/boot.bin of=build/floppy.img conv=notrunc
-dd if=build/kernel.bin of=build/floppy.img seek=1 conv=notrunc
+
+# Execute the build script
+./scripts/build.sh
 ```
+
+### 💨 Running the Emulation
+After building, you can launch the OS directly in QEMU:
+```bash
+./scripts/run_qemu.sh
+```
+
+---
+
+## 🛡️ Security & Privacy Vision (Roadmap)
+- [ ] **DevilFS**: Implementation of the native encrypted journaling filesystem.
+- [ ] **Anonymity Core**: Kernel-level hooks for routing traffic through Tor/VPNs.
+- [ ] **Sandboxing**: `Seccomp`-like module for restricting user-space processes.
+- [ ] **Hacking Tools**: Native implementation of network scanners and packet sniffers.
+
+---
+
+## 📄 License
+DevilCore is licensed under the **MIT License**. See `LICENSE` for more details.
+
+---
+*Built for the shadows. Developed by Antigravity.*

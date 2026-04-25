@@ -1,77 +1,51 @@
-// kernel/proc/elf_loader.c
-// ELF binary loader for user processes
-
-#include <devil/types.h>
+/*
+ * DevilCore OS — ELF64 Binary Loader
+ */
 #include "process.h"
-#include <fs/vfs.h>
+#include "../include/elf.h"
+#include "../fs/vfs.h"
+#include "../mm/vmm.h"
+#include "../mm/pmm.h"
+#include "../mm/heap.h"
+#include "../libc/string.h"
 
-typedef struct {
-    uint8_t  magic[4];
-    uint8_t  class_;
-    uint8_t  data;
-    uint8_t  version;
-    uint8_t  osabi;
-    uint8_t  abiversion;
-    uint8_t  padding[7];
-    uint16_t type;
-    uint16_t machine;
-    uint32_t version_;
-    uint64_t entry;
-    uint64_t phoff;
-    uint64_t shoff;
-    uint32_t flags;
-    uint16_t ehsize;
-    uint16_t phentsize;
-    uint16_t phnum;
-    uint16_t shentsize;
-    uint16_t shnum;
-    uint16_t shstrndx;
-} PACKED Elf64_Ehdr;
+uint64_t elf_load(vfs_node_t *file, uint64_t pml4) {
+    if (!file) return 0;
 
-typedef struct {
-    uint32_t type;
-    uint32_t flags;
-    uint64_t offset;
-    uint64_t vaddr;
-    uint64_t paddr;
-    uint64_t filesz;
-    uint64_t memsz;
-    uint64_t align;
-    uint64_t pheader;
-} PACKED Elf64_Phdr;
+    elf64_header_t header;
+    if (vfs_read(file, 0, sizeof(elf64_header_t), (uint8_t*)&header) != sizeof(elf64_header_t)) {
+        return 0;
+    }
 
-#define ELF_MAGIC 0x464C457F
-#define ELF_TYPE_EXEC 2
+    /* 1. Verify ELF identity */
+    if (*(uint32_t*)header.e_ident != ELF_MAGIC) return 0;
+    if (header.e_ident[4] != 2) return 0; /* Must be 64-bit */
+    if (header.e_type != 2) return 0;     /* Must be Executable */
 
-static int elf_validate(void *buf) {
-    Elf64_Ehdr *ehdr = (Elf64_Ehdr*)buf;
-    return ehdr->magic[0] == 0x7F && ehdr->magic[1] == 'E' &&
-           ehdr->magic[2] == 'L' && ehdr->magic[3] == 'F';
-}
+    /* 2. Load Program Segments */
+    for (int i = 0; i < header.e_phnum; i++) {
+        elf64_phdr_t phdr;
+        uint32_t offset = header.e_phoff + (i * header.e_phentsize);
+        vfs_read(file, offset, sizeof(elf64_phdr_t), (uint8_t*)&phdr);
 
-int elf_load(const char *path, char *const argv[]) {
-    void *file = vfs_open(path, 0);
-    if (!file) return -1;
-    
-    char buf[4096];
-    vfs_read(file, buf, sizeof(buf));
-    vfs_close(file);
-    
-    if (!elf_validate(buf)) return -1;
-    
-    Elf64_Ehdr *ehdr = (Elf64_Ehdr*)buf;
-    Elf64_Phdr *phdr = (Elf64_Phdr*)((uint8_t*)buf + ehdr->phoff);
-    
-    task_t *task = get_current_task();
-    if (!task) return -1;
-    
-    for (int i = 0; i < ehdr->phnum; i++) {
-        if (phdr[i].type == 1) { // PT_LOAD
-            // Map memory for segment
-            // Copy code to user space
+        if (phdr.p_type == PT_LOAD) {
+            /* Map segment into virtual memory */
+            uint64_t pages = (phdr.p_memsz + 4095) / 4096;
+            
+            /* Allocate physical frames and map them */
+            for (uint64_t p = 0; p < pages; p++) {
+                uint64_t virt = phdr.p_vaddr + (p * 4096);
+                uint64_t phys = pmm_alloc_frame();
+                vmm_map_page_in(pml4, virt, phys, PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER);
+            }
+
+            /* Note: To copy data into a different address space, we temporarily
+             * switch to it or use a kernel half mapping. 
+             * For now, if pml4 is the current one, we can just memset/memcpy. */
+            memset((void*)phdr.p_vaddr, 0, phdr.p_memsz);
+            vfs_read(file, (uint32_t)phdr.p_offset, (uint32_t)phdr.p_filesz, (uint8_t*)phdr.p_vaddr);
         }
     }
-    
-    task->rip = ehdr->entry;
-    return 0;
+
+    return header.e_entry;
 }

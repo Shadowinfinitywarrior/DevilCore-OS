@@ -23,6 +23,10 @@
 #define SYS_EXIT    60
 #define SYS_FORK    57
 #define SYS_EXECVE  59
+#define SYS_DIAG    300   /* Diagnostic subsystem syscall */
+
+/* Total number of syscalls */
+#define NR_SYSCALLS 301
 
 /* Initialize the syscall MSRs */
 void syscall_init(void);

@@ -6,6 +6,7 @@
 #include <fs/vfs.h>
 #include <proc/process.h>
 #include <net/socket.h>
+#include <diag/diag.h>
 
 long sys_read(uint64_t fd, uint64_t buf, uint64_t count) {
     void *file = (void*)fd;
@@ -91,4 +92,41 @@ long sys_listen(uint64_t sockfd, uint64_t backlog) {
 
 long sys_accept(uint64_t sockfd, uint64_t addr, uint64_t addrlen) {
     return 0;
+}
+
+/* Diagnostic syscall */
+long sys_diag(uint64_t category, uint64_t subcmd, uint64_t buf, uint64_t size) {
+    /* Validate buffer - must be in user space */
+    if (!buf || size == 0) return -1;
+    if (category > DIAG_CAT_ALL) return -1;
+
+    /* Special case: DIAG_CAT_ALL means full report */
+    if (category == DIAG_CAT_ALL) {
+        /* Allocate kernel buffer for full report */
+        char *kbuf = kmalloc(65536);
+        if (!kbuf) return -1;
+
+        diag_output_t out_kernel;
+        out_kernel.buffer = kbuf;
+        out_kernel.size = 65536;
+        out_kernel.written = 0;
+        out_kernel.error = 0;
+
+        /* Generate full report to kernel buffer */
+        diag_all_report(&out_kernel);
+
+        /* Copy to user buffer */
+        if (out_kernel.written > size) {
+            kfree(kbuf);
+            return -1; /* Buffer too small */
+        }
+
+        /* Safe copy to user space */
+        memcpy((void*)buf, kbuf, out_kernel.written);
+        kfree(kbuf);
+        return out_kernel.written;
+    }
+
+    /* Normal per-category diagnostic */
+    return diag_dispatch(category, subcmd, buf, size);
 }

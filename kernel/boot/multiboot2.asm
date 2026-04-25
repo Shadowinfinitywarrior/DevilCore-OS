@@ -67,6 +67,10 @@ gdt64:
     dq (1<<43) | (1<<44) | (1<<47) | (1<<53) ; executable, descriptor type, present, 64-bit
 .data: equ $ - gdt64
     dq (1<<44) | (1<<47) | (1<<41) ; descriptor type, present, writable data
+.user_code: equ $ - gdt64
+    dq (1<<43) | (1<<44) | (1<<47) | (1<<53) | (3<<45) ; executable, descriptor type, present, 64-bit, DPL 3
+.user_data: equ $ - gdt64
+    dq (1<<44) | (1<<47) | (1<<41) | (3<<45) ; descriptor type, present, writable data, DPL 3
 .pointer:
     dw $ - gdt64 - 1
     dq gdt64

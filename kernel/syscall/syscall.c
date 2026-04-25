@@ -3,6 +3,11 @@
  */
 #include "syscall.h"
 #include "../proc/scheduler.h"
+#include "../proc/elf_loader.h"
+#include "../fs/vfs.h"
+#include "../mm/vmm.h"
+#include "../mm/pmm.h"
+#include "../libc/string.h"
 
 /* MSR definitions */
 #define IA32_STAR  0xC0000081
@@ -14,6 +19,9 @@ extern void syscall_entry(void);
 
 typedef struct {
     uint64_t rax, rdi, rsi, rdx, r10, r8, r9;
+    uint64_t r15, r14, r13, r12, rbp, rbx;
+    uint64_t r11, rcx;
+    uint64_t padding;
 } syscall_regs_t;
 
 static inline void wrmsr(uint32_t msr, uint64_t val) {
@@ -59,6 +67,46 @@ uint64_t syscall_handler(syscall_regs_t *regs) {
             sched_yield();
             break;
             
+        case SYS_EXECVE: {
+            const char *path = (const char *)regs->rdi;
+            vfs_node_t *file = vfs_lookup(path);
+            if (!file) {
+                ret = (uint64_t)-1;
+                break;
+            }
+
+            /* Create isolated address space for the new program */
+            uint64_t new_pml4 = vmm_create_address_space();
+            if (!new_pml4) {
+                ret = (uint64_t)-1;
+                break;
+            }
+
+            /* Load into new space */
+            /* NOTE: For now, we reuse current space for the 'copy' phase
+             * or implement a proper kernel mapping. Simple hack: switch to new space,
+             * load, and if it fails, we are in trouble. 
+             * Better: Map new_pml4 pages into kernel space temporarily. */
+            uint64_t entry = elf_load(file, new_pml4);
+            if (!entry) {
+                ret = (uint64_t)-1;
+                break;
+            }
+
+            /* Transition thread to user mode (future: switch stacks) */
+            /* For now, just switch the PML4 and set the RAX as entry for the caller to jump */
+            vmm_switch_pml4(new_pml4);
+            
+            /* The syscall stub in ASM will return to user space with sysret.
+             * We need to set the RIP (RCX) to the new entry point. */
+            regs->rcx = entry;
+            /* Reset stack pointer for User Space if necessary */
+            /* regs->rsp = new_user_stack; */
+            
+            ret = 0; /* Success on execve? Usually doesn't 'return' on success */
+            break;
+        }
+
         case SYS_EXIT:
             /* thread_exit(); */
             while(1) { __asm__ volatile("hlt"); }

@@ -1,0 +1,15 @@
+# Build artifacts
+build/
+build_dc/
+*.o
+*.bin
+*.elf
+*.img
+*.log
+
+# ISO files (uncomment if you want to push ISOs)
+# *.iso
+
+# Python cache
+__pycache__/
+generate_font.py

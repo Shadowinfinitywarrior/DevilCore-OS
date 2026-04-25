@@ -1,6 +1,7 @@
 /*
  * DevilCore OS — Simple Round-Robin Scheduler
  */
+
 #include "scheduler.h"
 #include "../include/types.h"
 
@@ -22,7 +23,6 @@ void sched_add_thread(thread_t *t) {
         return;
     }
     
-    /* Insert at the end of the circular linked list */
     thread_t *last = g_thread_queue;
     while (last->next != g_thread_queue) {
         last = last->next;
@@ -35,20 +35,24 @@ thread_t *sched_get_current(void) {
     return g_current_thread;
 }
 
+/* Diagnostic accessor */
+thread_t *sched_get_thread_queue(void) {
+    return g_thread_queue;
+}
+
 void sched_yield(void) {
     if (!g_scheduler_enabled || !g_current_thread || g_current_thread->next == g_current_thread) {
-        return; /* Nothing to switch to */
+        return;
     }
 
     thread_t *prev = g_current_thread;
     thread_t *next = prev->next;
     
-    /* Find next ready thread */
     while (next->state != THREAD_READY && next->state != THREAD_RUNNING) {
         next = next->next;
-        if (next == prev) return; /* No one else is ready */
+        if (next == prev) return;
     }
-
+    
     g_current_thread = next;
     
     if (prev->state == THREAD_RUNNING) {
@@ -56,12 +60,9 @@ void sched_yield(void) {
     }
     next->state = THREAD_RUNNING;
     
-    /* Perform actual CPU context switch */
     switch_context(&prev->stack_ptr, next->stack_ptr);
 }
 
 void sched_tick(void) {
-    /* Called every PIT timer tick */
-    /* Preempt the current thread by forcing a yield */
     sched_yield();
 }

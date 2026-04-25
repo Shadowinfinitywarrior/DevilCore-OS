@@ -31,7 +31,7 @@ CFLAGS="-m64 -ffreestanding -mcmodel=large -mno-red-zone -nostdlib -nostdinc \
         -fno-pie -fno-stack-protector -fno-builtin -O2 -std=c99 \
         -mno-sse -mno-mmx -mno-sse2 \
         -Wall -Wextra -Wno-unused-parameter -Wno-type-limits \
-        -I$ROOT/kernel"
+        -I$ROOT/kernel -I$ROOT/kernel/include"
 
 # ---------- Assembly ---------------------------------------------------
 echo ""
@@ -55,9 +55,15 @@ for file in \
     gui/framebuffer.c gui/font.c gui/wm.c gui/terminal.c \
     apps/dsh.c \
     security/crypto.c security/privacy_hub.c security/sandbox.c \
+    proc/elf_loader.c \
     mm/pmm.c mm/vmm.c mm/heap.c \
+    lib/printf.c \
     proc/process.c proc/scheduler.c \
     syscall/syscall.c \
+    diag/diag.c \
+    diag/diag_cpu.c diag/diag_memory.c diag/diag_process.c diag/diag_fs.c \
+    diag/diag_graphics.c diag/diag_io.c diag/diag_security.c diag/diag_ipc.c \
+    diag/diag_timing.c diag/diag_network.c diag/diag_debug.c diag/diag_extra.c \
     kernel_main.c
 do
     echo "      CC  $(basename $file)"
@@ -78,8 +84,15 @@ ld -n -T kernel/kernel.ld -o build_dc/kernel.elf \
     build_dc/framebuffer.o build_dc/font.o build_dc/wm.o build_dc/terminal.o \
     build_dc/dsh.o \
     build_dc/crypto.o build_dc/privacy_hub.o build_dc/sandbox.o \
+    build_dc/elf_loader.o \
     build_dc/pmm.o build_dc/vmm.o build_dc/heap.o \
+    build_dc/printf.o \
     build_dc/process.o build_dc/scheduler.o build_dc/syscall.o \
+    build_dc/diag.o \
+    build_dc/diag_cpu.o build_dc/diag_memory.o build_dc/diag_process.o \
+    build_dc/diag_fs.o build_dc/diag_graphics.o build_dc/diag_io.o \
+    build_dc/diag_security.o build_dc/diag_ipc.o build_dc/diag_timing.o \
+    build_dc/diag_network.o build_dc/diag_debug.o build_dc/diag_extra.o \
     build_dc/kernel_main.o
 
 # Verify multiboot2 header

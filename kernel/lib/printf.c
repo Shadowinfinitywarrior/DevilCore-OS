@@ -110,6 +110,58 @@ int vprintf(const char *fmt, va_list args) {
     return count;
 }
 
+int vsprintf(char *buf, const char *fmt, va_list args) {
+    char *p = buf;
+    while (*fmt) {
+        if (*fmt == '%') {
+            fmt++;
+            switch (*fmt) {
+                case 'c': {
+                    *p++ = (char)va_arg(args, int);
+                    break;
+                }
+                case 's': {
+                    char *s = va_arg(args, char*);
+                    if (!s) s = "(null)";
+                    while (*s) *p++ = *s++;
+                    break;
+                }
+                case 'd':
+                case 'i': {
+                    long long val = va_arg(args, int);
+                    char tmp[32];
+                    int i = 0;
+                    if (val < 0) { *p++ = '-'; val = -val; }
+                    if (val == 0) { tmp[i++] = '0'; }
+                    else {
+                        while (val > 0) { tmp[i++] = digit[val % 10]; val /= 10; }
+                    }
+                    while (i-- > 0) *p++ = tmp[i];
+                    break;
+                }
+                case 'x': {
+                    unsigned long long val = va_arg(args, unsigned int);
+                    char tmp[32];
+                    int i = 0;
+                    if (val == 0) { tmp[i++] = '0'; }
+                    else {
+                        while (val > 0) { tmp[i++] = digit[val % 16]; val /= 16; }
+                    }
+                    while (i-- > 0) *p++ = tmp[i];
+                    break;
+                }
+                case '%': *p++ = '%'; break;
+                default: *p++ = *fmt; break;
+            }
+        } else {
+            *p++ = *fmt;
+        }
+        fmt++;
+    }
+    *p = '\0';
+    return (int)(p - buf);
+}
+
 int printf(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
