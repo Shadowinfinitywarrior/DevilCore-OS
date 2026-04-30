@@ -1,0 +1,1390 @@
+# DevilCore OS Architecture
+
+## Based on SliTaz GNU/Linux
+
+---
+
+## 1. System Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        DEVILCORE OS                                 │
+│              "Lightweight. Lethal. Limitless."                      │
+├─────────────────────────────────────────────────────────────────────┤
+│  BASE: SliTaz GNU/Linux (Rolling Release Fork)                     │
+│  KERNEL: Custom Hardened Linux Kernel (DevilKernel)                 │
+│  INIT: Custom hybrid init (devil-init) based on BusyBox + OpenRC   │
+│  PACKAGE MGR: tazpkg (extended) + devil-pkg (custom overlay)       │
+│  FILESYSTEM: ext4 / Btrfs (snapshots) / OverlayFS (live mode)     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 2. Layered Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    LAYER 7: USER EXPERIENCE                     │
+│         DevilCore Desktop / Profiles / Themes / Branding        │
+├─────────────────────────────────────────────────────────────────┤
+│                    LAYER 6: APPLICATION SUITES                  │
+│   CyberSec │ DevTools │ Gaming │ Productivity │ Multimedia     │
+├─────────────────────────────────────────────────────────────────┤
+│                    LAYER 5: DESKTOP ENVIRONMENT                 │
+│       DevilDE (Custom Openbox/Wayland Compositor Hybrid)        │
+├─────────────────────────────────────────────────────────────────┤
+│                    LAYER 4: FRAMEWORK & SERVICES                │
+│   devil-daemon │ devil-vpn │ devil-fw │ devil-sandbox           │
+├─────────────────────────────────────────────────────────────────┤
+│                    LAYER 3: SYSTEM CORE                         │
+│   BusyBox+ │ musl/glibc │ devil-init │ devil-pkg │ udev        │
+├─────────────────────────────────────────────────────────────────┤
+│                    LAYER 2: KERNEL SPACE                        │
+│   DevilKernel (Hardened Linux 6.x) │ Custom Modules │ Drivers  │
+├─────────────────────────────────────────────────────────────────┤
+│                    LAYER 1: HARDWARE / FIRMWARE                 │
+│   x86_64 │ ARM64 │ UEFI/BIOS │ GPU │ NIC │ USB │ Bluetooth    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 3. Kernel: DevilKernel
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    DEVILKERNEL                            │
+│              (Hardened Linux 6.x Fork)                   │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐  │
+│  │  SECURITY   │  │ PERFORMANCE  │  │   NETWORKING   │  │
+│  ├─────────────┤  ├──────────────┤  ├────────────────┤  │
+│  │ SELinux     │  │ BFQ I/O Sched│  │ Netfilter/nft  │  │
+│  │ AppArmor    │  │ PREEMPT_RT   │  │ WireGuard      │  │
+│  │ YAMA LSM    │  │ zRAM default │  │ Packet Inject  │  │
+│  │ Lockdown    │  │ MGLRU        │  │ Raw Sockets    │  │
+│  │ Landlock    │  │ Cgroup v2    │  │ MAC80211       │  │
+│  │ Integrity   │  │ PSI monitor  │  │ Bluetooth HCI  │  │
+│  └─────────────┘  └──────────────┘  └────────────────┘  │
+│                                                          │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐  │
+│  │   DRIVERS   │  │VIRTUALIZATION│  │   FORENSICS    │  │
+│  ├─────────────┤  ├──────────────┤  ├────────────────┤  │
+│  │ GPU (Mesa)  │  │ KVM/QEMU     │  │ dm-verity      │  │
+│  │ WiFi (mon)  │  │ Namespaces   │  │ FUSE support   │  │
+│  │ USB gadget  │  │ seccomp-BPF  │  │ Loop devices   │  │
+│  │ SDR drivers │  │ eBPF         │  │ Audit subsys   │  │
+│  └─────────────┘  └──────────────┘  └────────────────┘  │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Kernel Config Highlights
+```bash
+# DevilKernel .config key options
+CONFIG_SECURITY_SELINUX=y
+CONFIG_SECURITY_APPARMOR=y
+CONFIG_SECURITY_LANDLOCK=y
+CONFIG_DEFAULT_SECURITY="apparmor"
+CONFIG_BPF_SYSCALL=y
+CONFIG_NET_CLS_BPF=y
+CONFIG_PACKET=y                    # Raw packet access
+CONFIG_CFG80211=m                  # WiFi config
+CONFIG_MAC80211=m                  # Monitor mode
+CONFIG_USB_MON=m                   # USB monitoring
+CONFIG_KVM=y                       # Virtualization
+CONFIG_WIREGUARD=y                 # Built-in VPN
+CONFIG_PREEMPT=y                   # Low-latency (gaming)
+CONFIG_ZRAM=y                      # Compressed RAM
+CONFIG_BTRFS_FS=y                  # Snapshots
+CONFIG_OVERLAY_FS=y                # Live mode
+CONFIG_DRM=y                       # GPU support
+CONFIG_SND_HDA_INTEL=m             # Audio
+CONFIG_INPUT_JOYSTICK=y            # Gaming controllers
+```
+
+---
+
+## 4. Init System: devil-init
+
+```
+┌────────────────────────────────────────────────┐
+│              DEVIL-INIT BOOT SEQUENCE          │
+├────────────────────────────────────────────────┤
+│                                                │
+│  BIOS/UEFI                                     │
+│      │                                         │
+│      ▼                                         │
+│  GRUB2/Syslinux (DevilCore themed)             │
+│      │                                         │
+│      ├── Normal Boot                           │
+│      ├── Forensic Mode (read-only, no swap)    │
+│      ├── Stealth Mode (MAC randomize, no log)  │
+│      ├── Gaming Mode (performance governor)    │
+│      ├── Live Mode (RAM-only, OverlayFS)       │
+│      └── Recovery Mode                         │
+│      │                                         │
+│      ▼                                         │
+│  DevilKernel + initramfs                       │
+│      │                                         │
+│      ▼                                         │
+│  devil-init (PID 1)                            │
+│      │                                         │
+│      ├── Mount filesystems (fstab)             │
+│      ├── Load kernel modules                   │
+│      ├── Start udevd                           │
+│      ├── Network (devil-netd)                  │
+│      ├── Firewall (devil-fw / nftables)        │
+│      ├── Start devil-daemon                    │
+│      ├── Load profile (mode-based)             │
+│      └── Launch Display Manager / TTY          │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+---
+
+## 5. Package Management: Dual-Layer
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  PACKAGE MANAGEMENT                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────────────┐    ┌────────────────────────────┐  │
+│  │     tazpkg           │    │      devil-pkg             │  │
+│  │  (SliTaz native)     │    │   (Custom overlay mgr)     │  │
+│  ├─────────────────────┤    ├────────────────────────────┤  │
+│  │ • Base system pkgs   │    │ • Meta-package suites      │  │
+│  │ • SliTaz repos       │    │ • AppImage/Flatpak bridge  │  │
+│  │ • Cook build system  │    │ • devil-repo (custom repo) │  │
+│  │ • Lightweight deps   │    │ • Auto-compile from src    │  │
+│  └─────────┬───────────┘    │ • Rollback (Btrfs snap)    │  │
+│            │                │ • Sandboxed installs        │  │
+│            │                │ • Tool arsenal management   │  │
+│            ▼                └─────────────┬──────────────┘  │
+│  ┌─────────────────────────────────────────┘                │
+│  │                                                          │
+│  ▼                                                          │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │              DEVIL-STORE (GUI Frontend)              │   │
+│  │  Categories: Security │ Dev │ Gaming │ System │ All  │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### devil-pkg Commands
+```bash
+devil-pkg install <package>          # Install from devil-repo
+devil-pkg suite install cybersec     # Install full cybersec suite
+devil-pkg suite install gaming       # Install gaming suite
+devil-pkg sandbox install <package>  # Sandboxed install
+devil-pkg rollback                   # Btrfs snapshot rollback
+devil-pkg build <recipe>             # Compile from source
+devil-pkg search <query>             # Search all repos
+devil-pkg arsenal list               # List security tools
+devil-pkg arsenal update             # Update all sec tools
+```
+
+---
+
+## 6. Desktop Environment: DevilDE
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        DEVILDE                                   │
+│            (Lightweight Custom Desktop Environment)              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                    DISPLAY SERVER                         │   │
+│  │         Xorg (default) ←──→ Wayland (Labwc/Wayfire)      │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                           │                                      │
+│  ┌────────────┐  ┌────────┴───────┐  ┌───────────────────┐     │
+│  │  WINDOW    │  │   COMPOSITOR   │  │    PANELS/BARS    │     │
+│  │  MANAGER   │  │                │  │                   │     │
+│  ├────────────┤  ├────────────────┤  ├───────────────────┤     │
+│  │ Openbox    │  │ Picom (X11)    │  │ Polybar / tint2   │     │
+│  │ (primary)  │  │ or Wayfire     │  │ devil-bar (custom)│     │
+│  └────────────┘  └────────────────┘  └───────────────────┘     │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                    CORE COMPONENTS                        │   │
+│  ├──────────────────────────────────────────────────────────┤   │
+│  │ devil-bar      │ System bar (CPU/RAM/NET/mode indicator) │   │
+│  │ devil-menu     │ Rofi-based app launcher + tool search   │   │
+│  │ devil-dash     │ Dashboard widget (system + sec status)  │   │
+│  │ devil-term     │ Custom terminal (Alacritty/Kitty fork)  │   │
+│  │ devil-fm       │ File manager (PCManFM-Qt + sec plugins) │   │
+│  │ devil-notify   │ Notification daemon (dunst-based)       │   │
+│  │ devil-walls    │ Dynamic wallpaper engine                │   │
+│  │ devil-lock     │ Screen locker with USB-key support      │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                    THEMING                                │   │
+│  ├──────────────────────────────────────────────────────────┤   │
+│  │ Theme: Dark Red/Black (DevilCore signature)               │   │
+│  │ Icons: Custom "Inferno" icon pack                         │   │
+│  │ Font: JetBrains Mono / Hack Nerd Font                     │   │
+│  │ Cursor: Custom red/dark cursor theme                      │   │
+│  │ GTK/Qt: Unified dark theme with red accents               │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Desktop Layout
+```
+┌─────────────────────────────────────────────────────────────┐
+│ [≡] DevilCore │ CyberSec ▼│ Dev ▼│ Game ▼│    CPU:23% │ ▲ │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │                                                     │   │
+│  │              WORKSPACE AREA                         │   │
+│  │                                                     │   │
+│  │    ┌─────────────────┐  ┌──────────────────┐       │   │
+│  │    │  devil-term      │  │  devil-dash      │       │   │
+│  │    │  $ _             │  │  ┌──────────┐    │       │   │
+│  │    │                  │  │  │ Net Mon  │    │       │   │
+│  │    │                  │  │  │ Sys Mon  │    │       │   │
+│  │    │                  │  │  │ Sec Stat │    │       │   │
+│  │    └─────────────────┘  │  └──────────┘    │       │   │
+│  │                          └──────────────────┘       │   │
+│  │                                                     │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│ [Mode: NORMAL] │ VPN: OFF │ FW: ON │ ↑1.2MB ↓3.4MB │12:00│
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 7. Profile/Mode System
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    DEVIL-MODES                               │
+│            (Context-Aware System Profiles)                   │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐  │
+│  │  🔒 STEALTH │ │  🛡️ FORTRESS│ │  ⚔️ ATTACK           │  │
+│  ├─────────────┤ ├─────────────┤ ├─────────────────────┤  │
+│  │MAC randomize│ │Max firewall │ │Pentesting toolkit   │  │
+│  │Tor routing  │ │IDS enabled  │ │Monitor mode WiFi    │  │
+│  │No logging   │ │Sandboxed    │ │Proxy chains         │  │
+│  │Encrypted DNS│ │File integr. │ │Exploit frameworks   │  │
+│  │RAM-only ops │ │USB lockdown │ │Packet injection     │  │
+│  └─────────────┘ └─────────────┘ └─────────────────────┘  │
+│                                                             │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐  │
+│  │  🎮 GAMING  │ │  💻 DEVELOP │ │  🔍 FORENSIC        │  │
+│  ├─────────────┤ ├─────────────┤ ├─────────────────────┤  │
+│  │Performance  │ │Dev servers  │ │Read-only mount      │  │
+│  │governor     │ │Docker/Podman│ │No swap              │  │
+│  │GPU priority │ │IDE configs  │ │Hash verification    │  │
+│  │Low-latency  │ │Git integr.  │ │Timeline analysis    │  │
+│  │GameMode     │ │Debug tools  │ │Evidence collection  │  │
+│  └─────────────┘ └─────────────┘ └─────────────────────┘  │
+│                                                             │
+│  Switch: $ devil-mode <mode>                                │
+│  GUI: Click mode indicator in devil-bar                     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 8. Security Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  DEVILCORE SECURITY STACK                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  LAYER 1: NETWORK SECURITY                                      │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ devil-fw (nftables frontend)                              │   │
+│  │ ├── Stateful firewall with zone-based policies            │   │
+│  │ ├── Auto-block on port scan detection                     │   │
+│  │ ├── GeoIP filtering                                       │   │
+│  │ └── Rate limiting & DDoS protection                       │   │
+│  │                                                           │   │
+│  │ devil-vpn                                                 │   │
+│  │ ├── WireGuard (primary)                                   │   │
+│  │ ├── OpenVPN (fallback)                                    │   │
+│  │ ├── Tor integration (SOCKS5)                              │   │
+│  │ └── Kill switch (auto-enable)                             │   │
+│  │                                                           │   │
+│  │ devil-dns                                                 │   │
+│  │ ├── DNSCrypt / DoH / DoT                                 │   │
+│  │ ├── Local DNS sinkhole (ad/tracker blocking)              │   │
+│  │ └── DNS leak prevention                                   │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  LAYER 2: HOST SECURITY                                         │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ AppArmor profiles (all major apps confined)               │   │
+│  │ Firejail/Bubblewrap sandboxing                            │   │
+│  │ AIDE file integrity monitoring                            │   │
+│  │ rkhunter / chkrootkit (scheduled)                         │   │
+│  │ auditd with custom rule sets                              │   │
+│  │ USB guard (whitelist-based)                               │   │
+│  │ Secure Boot support (signed kernel)                       │   │
+│  │ Full disk encryption (LUKS2)                              │   │
+│  │ devil-hardener (auto-sysctl hardening)                    │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  LAYER 3: APPLICATION SECURITY                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ devil-vault (password manager integration)                │   │
+│  │ devil-crypt (GPG/age file encryption GUI)                 │   │
+│  │ Browser hardening (Firefox ESR + arkenfox user.js)        │   │
+│  │ Sandboxed browser profiles                                │   │
+│  │ Clipboard auto-clear                                      │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  LAYER 4: MONITORING & RESPONSE                                 │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ devil-sentinel (real-time threat monitor)                 │   │
+│  │ ├── Network anomaly detection                             │   │
+│  │ ├── Process behavior analysis                             │   │
+│  │ ├── Log aggregation & alerting                            │   │
+│  │ ├── Honeypot integration                                  │   │
+│  │ └── Incident response automation                          │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 9. Application Suites (Tool Arsenal)
+
+### 9.1 Cybersecurity & Ethical Hacking
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              CYBERSECURITY ARSENAL                                │
+├──────────────────┬──────────────────────────────────────────────┤
+│                  │                                              │
+│  RECONNAISSANCE  │  VULNERABILITY ANALYSIS                     │
+│  ├── nmap        │  ├── OpenVAS / GVM                          │
+│  ├── masscan     │  ├── Nikto                                  │
+│  ├── recon-ng    │  ├── WPScan                                 │
+│  ├── Shodan CLI  │  ├── SQLmap                                 │
+│  ├── theHarvester│  ├── Nuclei                                 │
+│  ├── Amass       │  └── Trivy                                  │
+│  ├── subfinder   │                                              │
+│  └── dnsrecon    │  EXPLOITATION                               │
+│                  │  ├── Metasploit Framework                   │
+│  WIRELESS        │  ├── ExploitDB / searchsploit               │
+│  ├── Aircrack-ng │  ├── BeEF                                   │
+│  ├── Kismet      │  ├── Empire                                 │
+│  ├── Bettercap   │  └── Cobalt Strike (placeholder)            │
+│  ├── Wifite2     │                                              │
+│  ├── Fern WiFi   │  POST-EXPLOITATION                          │
+│  └── Fluxion     │  ├── Mimikatz (Wine)                        │
+│                  │  ├── LinPEAS / WinPEAS                      │
+│  WEB TESTING     │  ├── Chisel                                 │
+│  ├── Burp Suite  │  ├── pwncat                                 │
+│  ├── OWASP ZAP   │  └── Sliver C2                              │
+│  ├── ffuf        │                                              │
+│  ├── gobuster    │  FORENSICS                                  │
+│  ├── dirb        │  ├── Autopsy / Sleuth Kit                   │
+│  └── wfuzz       │  ├── Volatility 3                           │
+│                  │  ├── Foremost / Scalpel                     │
+│  SOCIAL ENG.     │  ├── Binwalk                                │
+│  ├── SET         │  ├── Wireshark                              │
+│  ├── Gophish     │  └── NetworkMiner                           │
+│  └── King Phisher│                                              │
+│                  │  REVERSE ENGINEERING                         │
+│  PASSWORD        │  ├── Ghidra                                 │
+│  ├── John        │  ├── Radare2 / Rizin                        │
+│  ├── Hashcat     │  ├── GDB + GEF/pwndbg                      │
+│  ├── Hydra       │  ├── Binary Ninja (optional)                │
+│  ├── CeWL        │  └── Cutter                                 │
+│  └── Crunch      │                                              │
+│                  │  OSINT                                       │
+│  CRYPTOGRAPHY    │  ├── Maltego                                │
+│  ├── CyberChef   │  ├── SpiderFoot                             │
+│  ├── Hashid      │  ├── Photon                                 │
+│  └── RsaCtfTool  │  └── Sherlock                               │
+├──────────────────┴──────────────────────────────────────────────┤
+│  Custom: devil-arsenal (unified launcher for all sec tools)     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 9.2 Development Suite
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  DEVELOPMENT SUITE                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  EDITORS & IDEs                                                  │
+│  ├── Neovim (pre-configured with LSP, DAP, telescope)           │
+│  ├── VS Code / VSCodium (via AppImage)                           │
+│  ├── Lite-XL (lightweight alternative)                           │
+│  └── Vim (with devil-vim config)                                 │
+│                                                                  │
+│  LANGUAGES & RUNTIMES                                            │
+│  ├── C/C++ (GCC, Clang, CMake, Make)                             │
+│  ├── Python 3.x (pip, venv, pyenv)                               │
+│  ├── Rust (rustup, cargo)                                        │
+│  ├── Go (go toolchain)                                           │
+│  ├── JavaScript/TypeScript (Node.js, Deno, Bun)                  │
+│  ├── Java (OpenJDK)                                              │
+│  ├── Ruby (rbenv)                                                │
+│  ├── PHP                                                         │
+│  ├── Lua / LuaJIT                                                │
+│  ├── Assembly (NASM, GAS)                                        │
+│  ├── Bash / Zsh scripting                                        │
+│  └── Perl                                                        │
+│                                                                  │
+│  CONTAINERS & VIRTUALIZATION                                     │
+│  ├── Docker / Podman                                             │
+│  ├── QEMU/KVM + Virt-Manager                                    │
+│  ├── VirtualBox (optional)                                       │
+│  ├── LXC/LXD                                                    │
+│  └── Vagrant                                                     │
+│                                                                  │
+│  VERSION CONTROL & CI                                            │
+│  ├── Git + lazygit + tig                                         │
+│  ├── GitHub CLI (gh)                                             │
+│  └── Jenkins / Drone CI (self-hosted optional)                   │
+│                                                                  │
+│  DATABASES                                                       │
+│  ├── SQLite                                                      │
+│  ├── PostgreSQL                                                  │
+│  ├── MariaDB/MySQL                                               │
+│  ├── Redis                                                       │
+│  └── MongoDB (via container)                                     │
+│                                                                  │
+│  DEBUGGING & PROFILING                                           │
+│  ├── GDB + GEF/pwndbg/peda                                      │
+│  ├── Valgrind                                                    │
+│  ├── strace / ltrace                                             │
+│  ├── perf                                                        │
+│  └── Sysprof                                                     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 9.3 Gaming Suite
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     GAMING SUITE                                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  PLATFORM & COMPATIBILITY                                        │
+│  ├── Steam (native Linux client)                                 │
+│  ├── Lutris (unified game manager)                               │
+│  ├── Wine / Wine-GE                                              │
+│  ├── Proton / Proton-GE                                          │
+│  ├── DXVK / VKD3D-Proton                                        │
+│  └── Heroic Games Launcher (Epic/GOG)                            │
+│                                                                  │
+│  GPU DRIVERS                                                     │
+│  ├── Mesa (AMD/Intel - open source)                              │
+│  ├── NVIDIA proprietary (optional)                               │
+│  ├── Vulkan (vulkan-tools, vulkan-loader)                        │
+│  └── MangoHud (performance overlay)                              │
+│                                                                  │
+│  PERFORMANCE                                                     │
+│  ├── GameMode (Feral Interactive)                                │
+│  ├── Custom CPU governor (performance)                           │
+│  ├── GPU overclocking tools                                      │
+│  ├── Corectrl (AMD GPU management)                               │
+│  └── devil-gamemode (custom performance script)                  │
+│                                                                  │
+│  EMULATION                                                       │
+│  ├── RetroArch (multi-system)                                    │
+│  ├── PCSX2 (PS2)                                                 │
+│  ├── RPCS3 (PS3)                                                 │
+│  ├── Dolphin (GameCube/Wii)                                      │
+│  ├── Yuzu/Ryujinx (Switch)                                       │
+│  └── PPSSPP (PSP)                                                │
+│                                                                  │
+│  GAME DEV                                                        │
+│  ├── Godot Engine                                                │
+│  ├── Unity Hub (via AppImage)                                    │
+│  ├── Blender (3D modeling)                                       │
+│  ├── Aseprite (pixel art)                                        │
+│  └── Tiled (level editor)                                        │
+│                                                                  │
+│  STREAMING                                                       │
+│  ├── OBS Studio                                                  │
+│  └── Sunshine (Moonlight host)                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 9.4 General Purpose & Productivity
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                GENERAL PURPOSE SUITE                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  WEB BROWSERS                                                    │
+│  ├── Firefox ESR (hardened, default)                             │
+│  ├── Tor Browser                                                 │
+│  ├── Chromium (optional)                                         │
+│  └── Brave (optional)                                            │
+│                                                                  │
+│  OFFICE & DOCS                                                   │
+│  ├── LibreOffice                                                 │
+│  ├── Obsidian / Logseq (knowledge base)                          │
+│  ├── Zathura (PDF viewer)                                        │
+│  └── CherryTree (note-taking for pentests)                       │
+│                                                                  │
+│  MULTIMEDIA                                                      │
+│  ├── VLC / mpv (video)                                           │
+│  ├── GIMP (image editing)                                        │
+│  ├── Inkscape (vector graphics)                                  │
+│  ├── Audacity (audio)                                            │
+│  ├── Kdenlive (video editing)                                    │
+│  └── Spotify (Flatpak, optional)                                 │
+│                                                                  │
+│  COMMUNICATION                                                   │
+│  ├── Signal Desktop                                              │
+│  ├── Discord (Flatpak)                                           │
+│  ├── Element (Matrix client)                                     │
+│  ├── Thunderbird (email)                                         │
+│  └── HexChat (IRC)                                               │
+│                                                                  │
+│  SYSTEM UTILITIES                                                │
+│  ├── htop / btop                                                 │
+│  ├── Timeshift / Snapper (backups)                               │
+│  ├── GParted (partition manager)                                 │
+│  ├── Ventoy (bootable USB creator)                               │
+│  ├── BleachBit (system cleaner)                                  │
+│  └── Neofetch / fastfetch (system info)                          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 10. Core Daemons & Services
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  DEVIL DAEMONS & SERVICES                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  devil-daemon (Master Service Manager)                           │
+│  │                                                               │
+│  ├── devil-netd          Network manager daemon                  │
+│  │   ├── WiFi management (wpa_supplicant + iwd)                  │
+│  │   ├── Auto MAC randomization                                  │
+│  │   ├── Captive portal detection                                │
+│  │   └── Network profiling                                       │
+│  │                                                               │
+│  ├── devil-fwd           Firewall daemon                         │
+│  │   ├── nftables backend                                        │
+│  │   ├── Zone-based rules                                        │
+│  │   ├── Application-aware filtering                             │
+│  │   └── Intrusion detection (Suricata integration)              │
+│  │                                                               │
+│  ├── devil-vpnd          VPN daemon                              │
+│  │   ├── WireGuard management                                    │
+│  │   ├── Auto-connect profiles                                   │
+│  │   └── Kill switch                                             │
+│  │                                                               │
+│  ├── devil-sentinel      Security monitoring                     │
+│  │   ├── Real-time log analysis                                  │
+│  │   ├── Process anomaly detection                               │
+│  │   ├── File integrity checks                                   │
+│  │   └── Alert system                                            │
+│  │                                                               │
+│  ├── devil-updated       System update daemon                    │
+│  │   ├── Auto-check for updates                                  │
+│  │   ├── Security patch priority                                 │
+│  │   └── Pre-update snapshots                                    │
+│  │                                                               │
+│  └── devil-powerd        Power management                        │
+│      ├── Performance/balanced/powersave                          │
+│      ├── Gaming mode integration                                 │
+│      └── Battery optimization (laptops)                          │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 11. Filesystem Layout
+
+```
+/
+├── bin/                    → Symlink to /usr/bin
+├── boot/
+│   ├── devilkernel         → Custom kernel image
+│   ├── initramfs.img       → Initial ramdisk
+│   ├── grub/               → GRUB config + DevilCore theme
+│   └── System.map
+├── dev/
+├── etc/
+│   ├── devil/              → DevilCore configuration root
+│   │   ├── devil.conf      → Master configuration file
+│   │   ├── modes/          → Mode profiles
+│   │   │   ├── stealth.conf
+│   │   │   ├── fortress.conf
+│   │   │   ├── attack.conf
+│   │   │   ├── gaming.conf
+│   │   │   ├── develop.conf
+│   │   │   └── forensic.conf
+│   │   ├── firewall/       → nftables rule sets
+│   │   ├── vpn/            → VPN configurations
+│   │   ├── hardening/      → Sysctl & security configs
+│   │   └── arsenal/        → Tool configurations
+│   ├── apparmor.d/         → AppArmor profiles
+│   ├── init.d/             → OpenRC init scripts
+│   ├── NetworkManager/
+│   ├── X11/
+│   └── skel/               → Default user skeleton
+│       └── .config/
+│           └── devil/      → User-level devil config
+├── home/
+│   └── operator/           → Default user
+│       ├── .config/devil/
+│       ├── Arsenal/        → Cybersec workspace
+│       │   ├── targets/
+│       │   ├── loot/
+│       │   ├── reports/
+│       │   ├── scripts/
+│       │   └── wordlists/
+│       ├── Projects/       → Development workspace
+│       ├── Games/          → Gaming data
+│       ├── Documents/
+│       └── Downloads/
+├── lib/                    → Symlink to /usr/lib
+├── media/                  → Auto-mount point
+├── mnt/                    → Manual mount point
+├── opt/
+│   ├── devil-tools/        → Custom DevilCore tools
+│   ├── appimages/          → AppImage storage
+│   └── gaming/             → Game-specific runtimes
+├── proc/
+├── root/                   → Root home (restricted)
+├── run/
+│   └── devil/              → Runtime data
+├── srv/                    → Local servers (labs)
+├── sys/
+├── tmp/                    → tmpfs (RAM-backed)
+├── usr/
+│   ├── bin/
+│   ├── include/
+│   ├── lib/
+│   ├── libexec/devil/      → DevilCore internal executables
+│   ├── share/
+│   │   ├── devil/          → Shared resources
+│   │   │   ├── wordlists/  → Pre-installed wordlists
+│   │   │   │   ├── rockyou.txt
+│   │   │   │   ├── seclists/
+│   │   │   │   └── custom/
+│   │   │   ├── payloads/   → Exploit payloads & shells
+│   │   │   ├── templates/  → Report templates
+│   │   │   ├── themes/     → Desktop themes
+│   │   │   └── docs/       → Documentation
+│   │   ├── applications/
+│   │   └── icons/
+│   └── src/                → Kernel source + build tools
+└── var/
+    ├── devil/
+    │   ├── logs/           → Security logs
+    │   ├── snapshots/      → Btrfs snapshots metadata
+    │   ├── cache/          → Package cache
+    │   └── db/             → Tool databases
+    ├── log/
+    └── tmp/
+```
+
+---
+
+## 12. Networking Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  NETWORK STACK                                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                APPLICATION LAYER                          │   │
+│  │  Browsers │ Tools │ Services                              │   │
+│  └────────────────────────┬─────────────────────────────────┘   │
+│                           │                                      │
+│  ┌────────────────────────▼─────────────────────────────────┐   │
+│  │              DEVIL-PROXY CHAIN                            │   │
+│  │  ┌──────┐   ┌──────┐   ┌──────┐   ┌──────┐              │   │
+│  │  │Direct│◄─►│SOCKS5│◄─►│ Tor  │◄─►│ VPN  │              │   │
+│  │  │      │   │Proxy │   │      │   │(WG)  │              │   │
+│  │  └──────┘   └──────┘   └──────┘   └──────┘              │   │
+│  │         Configurable chain routing                        │   │
+│  └────────────────────────┬─────────────────────────────────┘   │
+│                           │                                      │
+│  ┌────────────────────────▼─────────────────────────────────┐   │
+│  │              DEVIL-FW (Firewall Layer)                     │   │
+│  │  ┌─────────────────────────────────────────────────┐      │   │
+│  │  │  nftables rules engine                          │      │   │
+│  │  │  ├── INPUT chain (strict whitelist)             │      │   │
+│  │  │  ├── OUTPUT chain (app-aware)                   │      │   │
+│  │  │  ├── FORWARD chain (VM/container routing)       │      │   │
+│  │  │  └── Custom chains per mode                     │      │   │
+│  │  └─────────────────────────────────────────────────┘      │   │
+│  │                                                           │   │
+│  │  ┌─────────────────────────────────────────────────┐      │   │
+│  │  │  Suricata IDS/IPS (optional per mode)           │      │   │
+│  │  └─────────────────────────────────────────────────┘      │   │
+│  └────────────────────────┬─────────────────────────────────┘   │
+│                           │                                      │
+│  ┌────────────────────────▼─────────────────────────────────┐   │
+│  │              DEVIL-DNS                                     │   │
+│  │  ┌──────────┐  ┌───────────┐  ┌──────────────────┐       │   │
+│  │  │ Unbound  │  │ DNSCrypt  │  │ Blocklist Engine │       │   │
+│  │  │ (local)  │──│ (encrypt) │  │ (ads/trackers)   │       │   │
+│  │  └──────────┘  └───────────┘  └──────────────────┘       │   │
+│  └────────────────────────┬─────────────────────────────────┘   │
+│                           │                                      │
+│  ┌────────────────────────▼─────────────────────────────────┐   │
+│  │              NETWORK INTERFACES                           │   │
+│  │  ┌────────┐  ┌────────┐  ┌────────┐  ┌──────────────┐   │   │
+│  │  │  eth0  │  │ wlan0  │  │ wlan1  │  │ veth/docker0 │   │   │
+│  │  │(wired) │  │(normal)│  │(monitor│  │ (containers) │   │   │
+│  │  │        │  │        │  │  mode) │  │              │   │   │
+│  │  └────────┘  └────────┘  └────────┘  └──────────────┘   │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 13. Build System
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  DEVILCORE BUILD SYSTEM                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  BUILD ENVIRONMENT                                               │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                                                          │   │
+│  │  1. Start with SliTaz base (cooking/rolling)             │   │
+│  │     $ tazlito gen-distro                                 │   │
+│  │                                                          │   │
+│  │  2. Build DevilKernel                                    │   │
+│  │     $ cd /usr/src/devilkernel                            │   │
+│  │     $ make devil_defconfig                               │   │
+│  │     $ make -j$(nproc)                                    │   │
+│  │     $ make modules_install                               │   │
+│  │                                                          │   │
+│  │  3. Install devil-core packages                          │   │
+│  │     $ devil-build install-base                           │   │
+│  │     $ devil-build install-suite cybersec                 │   │
+│  │     $ devil-build install-suite dev                      │   │
+│  │     $ devil-build install-suite gaming                   │   │
+│  │     $ devil-build install-suite general                  │   │
+│  │                                                          │   │
+│  │  4. Apply configurations                                 │   │
+│  │     $ devil-build configure                              │   │
+│  │                                                          │   │
+│  │  5. Generate ISO                                         │   │
+│  │     $ devil-build gen-iso                                │   │
+│  │                                                          │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  BUILD PIPELINE                                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                                                          │   │
+│  │  SliTaz Base ──► DevilKernel ──► Package Install ──►     │   │
+│  │  Configuration ──► Theming ──► Hardening ──►             │   │
+│  │  Testing ──► ISO Generation ──► Checksum/Sign            │   │
+│  │                                                          │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  ISO VARIANTS                                                    │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  devilcore-full.iso        (~6-8 GB) All suites          │   │
+│  │  devilcore-cybersec.iso    (~4-5 GB) Security focused    │   │
+│  │  devilcore-dev.iso         (~3-4 GB) Development focused │   │
+│  │  devilcore-lite.iso        (~1-2 GB) Minimal + essentials│   │
+│  │  devilcore-netinstall.iso  (~200 MB) Network installer   │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  RELEASE CHANNELS                                                │
+│  ├── Stable     (quarterly releases, tested)                     │
+│  ├── Rolling    (continuous updates, semi-tested)                │
+│  └── Bleeding   (daily builds, experimental)                     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 14. CLI Framework: devil-cli
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  DEVIL-CLI COMMAND FRAMEWORK                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  $ devil <command> [subcommand] [options]                        │
+│                                                                  │
+│  SYSTEM                                                          │
+│  ├── devil mode <mode>           Switch operational mode         │
+│  ├── devil status                System security status          │
+│  ├── devil update                Update system & tools           │
+│  ├── devil harden                Apply/check hardening           │
+│  ├── devil snapshot create       Create system snapshot          │
+│  ├── devil snapshot restore      Restore snapshot                │
+│  └── devil config                System configuration TUI        │
+│                                                                  │
+│  NETWORK                                                         │
+│  ├── devil net status            Network status overview         │
+│  ├── devil net scan              Quick network scan              │
+│  ├── devil vpn connect <profile> Connect VPN                     │
+│  ├── devil vpn disconnect        Disconnect VPN                  │
+│  ├── devil tor start|stop        Tor routing                     │
+│  ├── devil fw status             Firewall status                 │
+│  ├── devil fw mode <strict|normal|open>                          │
+│  ├── devil mac randomize         Randomize MAC address           │
+│  └── devil dns flush             Flush DNS cache                 │
+│                                                                  │
+│  SECURITY                                                        │
+│  ├── devil arsenal               Launch tool arsenal menu        │
+│  ├── devil arsenal search <tool> Search for security tool        │
+│  ├── devil scan <target>         Quick vulnerability scan        │
+│  ├── devil audit                 System security audit           │
+│  ├── devil crypt <file>          Encrypt/decrypt file            │
+│  └── devil wipe <target>         Secure data wipe               │
+│                                                                  │
+│  WORKSPACE                                                       │
+│  ├── devil project new <name>    Create pentest project          │
+│  ├── devil project list          List projects                   │
+│  ├── devil report generate       Generate pentest report         │
+│  └── devil notes                 Quick notes (CherryTree)        │
+│                                                                  │
+│  PACKAGE                                                         │
+│  ├── devil pkg install <pkg>     Install package                 │
+│  ├── devil pkg remove <pkg>      Remove package                  │
+│  ├── devil pkg search <query>    Search packages                 │
+│  └── devil suite install <suite> Install tool suite              │
+│                                                                  │
+│  GAMING                                                          │
+│  ├── devil game mode on|off      Toggle gaming mode              │
+│  ├── devil game launch <game>    Launch with optimizations       │
+│  └── devil game fps              Show FPS overlay                │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 15. Installation Process
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                DEVILCORE INSTALLER (devil-install)                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  STEP 1: BOOT OPTIONS                                            │
+│  ┌──────────────────────────────────────────────────┐            │
+│  │  🔥 DevilCore OS                                 │            │
+│  │  ┌──────────────────────────────────────────┐    │            │
+│  │  │  ► Live Session (Try without installing) │    │            │
+│  │  │  ► Install DevilCore                     │    │            │
+│  │  │  ► Install (Expert Mode)                 │    │            │
+│  │  │  ► Forensic Mode (Safe)                  │    │            │
+│  │  │  ► Boot existing OS                      │    │            │
+│  │  └──────────────────────────────────────────┘    │            │
+│  └──────────────────────────────────────────────────┘            │
+│                                                                  │
+│  STEP 2: PROFILE SELECTION                                       │
+│  ┌──────────────────────────────────────────────────┐            │
+│  │  Choose your primary profile:                    │            │
+│  │  ┌────────────────────────────────────────┐      │            │
+│  │  │ [■] Full Arsenal (Everything)          │      │            │
+│  │  │ [□] Cybersecurity Professional         │      │            │
+│  │  │ [□] Software Developer                 │      │            │
+│  │  │ [□] Gamer                              │      │            │
+│  │  │ [□] General Purpose                    │      │            │
+│  │  │ [□] Minimal (Core only)                │      │            │
+│  │  │ [□] Custom (Choose packages)           │      │            │
+│  │  └────────────────────────────────────────┘      │            │
+│  └──────────────────────────────────────────────────┘            │
+│                                                                  │
+│  STEP 3: DISK SETUP                                              │
+│  ┌──────────────────────────────────────────────────┐            │
+│  │  ► Auto (Guided, full disk, LUKS encrypted)      │            │
+│  │  ► Auto (Guided, dual-boot detection)            │            │
+│  │  ► Manual partitioning                           │            │
+│  │                                                  │            │
+│  │  Encryption: [■] LUKS2 Full Disk Encryption      │            │
+│  │  Filesystem: (•) Btrfs  ( ) ext4  ( ) XFS        │            │
+│  │  Swap:       (•) zRAM   ( ) Partition ( ) File    │            │
+│  └──────────────────────────────────────────────────┘            │
+│                                                                  │
+│  STEP 4: DEFAULT PARTITION SCHEME (Btrfs)                        │
+│  ┌──────────────────────────────────────────────────┐            │
+│  │  /dev/sda1  512MB  EFI System Partition (FAT32)  │            │
+│  │  /dev/sda2  REST   LUKS2 Container               │            │
+│  │    └── Btrfs volume                              │            │
+│  │        ├── @          → /                        │            │
+│  │        ├── @home      → /home                    │            │
+│  │        ├── @snapshots → /.snapshots              │            │
+│  │        ├── @var_log   → /var/log                 │            │
+│  │        └── @devil     → /var/devil               │            │
+│  └──────────────────────────────────────────────────┘            │
+│                                                                  │
+│  STEP 5: USER SETUP                                              │
+│  ┌──────────────────────────────────────────────────┐            │
+│  │  Username:  [operator        ]                   │            │
+│  │  Password:  [****************]                   │            │
+│  │  Hostname:  [devilcore       ]                   │            │
+│  │  [■] Enable root account (locked by default)     │            │
+│  │  [■] Enable sudo                                 │            │
+│  └──────────────────────────────────────────────────┘            │
+│                                                                  │
+│  STEP 6: SECURITY OPTIONS                                        │
+│  ┌──────────────────────────────────────────────────┐            │
+│  │  [■] Enable firewall on boot                     │            │
+│  │  [■] Enable AppArmor                             │            │
+│  │  [■] Enable automatic security updates           │            │
+│  │  [□] Enable Tor by default                       │            │
+│  │  [■] MAC randomization on boot                   │            │
+│  │  [■] DNS encryption (DoH)                        │            │
+│  │  [□] USB device whitelisting                     │            │
+│  └──────────────────────────────────────────────────┘            │
+│                                                                  │
+│  STEP 7: INSTALL & REBOOT                                        │
+│  ┌──────────────────────────────────────────────────┐            │
+│  │  Installing DevilCore OS...                       │            │
+│  │  ████████████████████░░░░░░░░  67%                │            │
+│  │  Current: Installing cybersec arsenal...           │            │
+│  └──────────────────────────────────────────────────┘            │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 16. Directory Structure: Source Repository
+
+```
+devilcore/
+├── README.md
+├── LICENSE                          # GPL v3
+├── Makefile                         # Master build
+├── devil-build.sh                   # Build orchestrator
+│
+├── kernel/
+│   ├── config/
+│   │   └── devil_defconfig          # Kernel config
+│   ├── patches/                     # Custom kernel patches
+│   └── modules/                     # Custom kernel modules
+│
+├── base/
+│   ├── devil-init/                  # Custom init system
+│   ├── devil-cli/                   # CLI framework
+│   ├── devil-daemon/                # Master daemon
+│   ├── devil-pkg/                   # Package manager extension
+│   └── busybox-config               # Custom BusyBox config
+│
+├── security/
+│   ├── devil-fw/                    # Firewall manager
+│   ├── devil-vpn/                   # VPN manager
+│   ├── devil-sentinel/              # Security monitor
+│   ├── devil-hardener/              # System hardening scripts
+│   ├── apparmor-profiles/           # Custom AppArmor profiles
+│   └── nftables-rules/              # Firewall rule sets
+│
+├── desktop/
+│   ├── devil-de/                    # Desktop environment configs
+│   ├── devil-bar/                   # Custom panel/bar
+│   ├── devil-menu/                  # Application launcher
+│   ├── devil-dash/                  # Dashboard widgets
+│   ├── devil-term/                  # Terminal config
+│   ├── themes/
+│   │   ├── gtk/                     # GTK theme
+│   │   ├── qt/                      # Qt theme
+│   │   ├── icons/                   # Icon theme
+│   │   ├── cursors/                 # Cursor theme
+│   │   ├── grub/                    # GRUB theme
+│   │   ├── plymouth/                # Boot splash
+│   │   └── wallpapers/              # Wallpapers
+│   └── configs/
+│       ├── openbox/                 # Window manager config
+│       ├── polybar/                 # Bar config
+│       ├── rofi/                    # Launcher config
+│       ├── picom/                   # Compositor config
+│       ├── dunst/                   # Notifications config
+│       └── alacritty/               # Terminal config
+│
+├── suites/
+│   ├── cybersec/
+│   │   ├── packages.list            # Tool list
+│   │   ├── configs/                 # Tool configurations
+│   │   └── scripts/                 # Automation scripts
+│   ├── development/
+│   │   ├── packages.list
+│   │   ├── configs/
+│   │   │   ├── neovim/              # Neovim config
+│   │   │   ├── git/                 # Git config
+│   │   │   └── docker/              # Docker config
+│   │   └── templates/               # Project templates
+│   ├── gaming/
+│   │   ├── packages.list
+│   │   ├── configs/
+│   │   └── scripts/
+│   │       └── devil-gamemode.sh
+│   └── general/
+│       ├── packages.list
+│       └── configs/
+│
+├── modes/
+│   ├── stealth.conf
+│   ├── fortress.conf
+│   ├── attack.conf
+│   ├── gaming.conf
+│   ├── develop.conf
+│   └── forensic.conf
+│
+├── installer/
+│   ├── devil-install                # Installer TUI/GUI
+│   ├── partitioning/                # Partition schemes
+│   └── post-install/                # Post-install scripts
+│
+├── iso/
+│   ├── isolinux/                    # Boot loader configs
+│   ├── grub/                        # GRUB configs
+│   ├── live/                        # Live system configs
+│   └── build-iso.sh                 # ISO generation script
+│
+├── repo/
+│   ├── devil-repo-config            # Repository configuration
+│   └── packages/                    # Custom package recipes
+│       └── cook/                    # SliTaz cook receipts
+│
+├── docs/
+│   ├── architecture.md
+│   ├── user-guide.md
+│   ├── developer-guide.md
+│   ├── security-guide.md
+│   └── api/
+│
+└── tests/
+    ├── unit/
+    ├── integration/
+    ├── security/
+    └── performance/
+```
+
+---
+
+## 17. Operational Modes Deep Dive
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                        MODE CONFIGURATION MAP                        │
+├──────────┬─────────┬──────────┬─────────┬──────────┬────────────────┤
+│ Setting  │STEALTH  │FORTRESS  │ATTACK   │GAMING    │FORENSIC        │
+├──────────┼─────────┼──────────┼─────────┼──────────┼────────────────┤
+│ Firewall │ Strict  │ Maximum  │ Moderate│ Minimal  │ Strict         │
+│ Logging  │ OFF     │ FULL     │ FULL    │ Minimal  │ FULL           │
+│ MAC Rand │ ON      │ ON       │ ON      │ OFF      │ ON             │
+│ DNS Enc  │ DoH+Tor │ DoH      │ DoH     │ Standard │ DoH            │
+│ VPN      │ Auto-ON │ Optional │ Chain   │ OFF      │ OFF            │
+│ Tor      │ Auto-ON │ OFF      │ Optional│ OFF      │ OFF            │
+│ Governor │ Balance │ Balance  │ Balance │ Perform  │ Powersave      │
+│ Swap     │ Disabled│ Encrypted│ Normal  │ zRAM Max │ Disabled       │
+│ Mount    │ noexec  │ nosuid   │ Normal  │ Normal   │ Read-only      │
+│ USB      │ Locked  │ Locked   │ Open    │ Open     │ Locked         │
+│ Sandbox  │ All apps│ Browsers │ None    │ None     │ All apps       │
+│ Audit    │ OFF     │ ON       │ ON      │ OFF      │ FULL           │
+│ Snapshots│ N/A     │ Auto     │ Auto    │ OFF      │ N/A            │
+│ WiFi Mon │ OFF     │ OFF      │ Ready   │ OFF      │ OFF            │
+│ GPU      │ Normal  │ Normal   │ Normal  │ Perf Max │ Normal         │
+│ Sysctl   │ Max Hard│ Max Hard │ Moderate│ Gaming   │ Forensic       │
+└──────────┴─────────┴──────────┴─────────┴──────────┴────────────────┘
+```
+
+---
+
+## 18. Security Hardening Script (devil-hardener)
+
+```bash
+#!/bin/sh
+# devil-hardener - DevilCore System Hardening
+
+# Kernel hardening (sysctl)
+HARDENING_SYSCTL="
+kernel.randomize_va_space=2
+kernel.kptr_restrict=2
+kernel.dmesg_restrict=1
+kernel.perf_event_paranoid=3
+kernel.yama.ptrace_scope=2
+kernel.unprivileged_bpf_disabled=1
+net.core.bpf_jit_harden=2
+kernel.kexec_load_disabled=1
+kernel.sysrq=0
+net.ipv4.conf.all.rp_filter=1
+net.ipv4.conf.default.rp_filter=1
+net.ipv4.conf.all.accept_redirects=0
+net.ipv4.conf.default.accept_redirects=0
+net.ipv4.conf.all.send_redirects=0
+net.ipv4.conf.default.send_redirects=0
+net.ipv4.conf.all.accept_source_route=0
+net.ipv4.conf.default.accept_source_route=0
+net.ipv4.conf.all.log_martians=1
+net.ipv4.icmp_echo_ignore_broadcasts=1
+net.ipv4.icmp_ignore_bogus_error_responses=1
+net.ipv4.tcp_syncookies=1
+net.ipv4.tcp_timestamps=0
+net.ipv6.conf.all.accept_redirects=0
+net.ipv6.conf.default.accept_redirects=0
+net.ipv6.conf.all.accept_source_route=0
+net.ipv6.conf.default.accept_source_route=0
+fs.protected_hardlinks=1
+fs.protected_symlinks=1
+fs.protected_fifos=2
+fs.protected_regular=2
+fs.suid_dumpable=0
+"
+```
+
+---
+
+## 19. Live Boot Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  LIVE BOOT (OverlayFS)                       │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  USB/ISO ──► GRUB ──► DevilKernel ──► initramfs            │
+│                                          │                  │
+│                                          ▼                  │
+│                    ┌─────────────────────────────┐          │
+│                    │      OverlayFS Stack        │          │
+│                    ├─────────────────────────────┤          │
+│                    │  UPPER (tmpfs / RAM)        │ ← Writes │
+│                    ├─────────────────────────────┤          │
+│                    │  LOWER (squashfs / RO)      │ ← Base   │
+│                    ├─────────────────────────────┤          │
+│                    │  MERGED (union mount)       │ ← System │
+│                    └─────────────────────────────┘          │
+│                                                             │
+│  PERSISTENCE (Optional)                                     │
+│  ├── Casper-like partition on USB                           │
+│  ├── Encrypted LUKS container file                          │
+│  └── Saves: /home, /etc/devil, tool configs                │
+│                                                             │
+│  FORENSIC LIVE MODE                                         │
+│  ├── No swap enabled                                        │
+│  ├── No auto-mount of local disks                          │
+│  ├── Clock set to UTC only                                  │
+│  ├── No writes to any physical disk                        │
+│  └── All tools loaded in RAM                               │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 20. System Resource Targets
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  RESOURCE TARGETS                            │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  MINIMUM REQUIREMENTS                                       │
+│  ├── CPU:  x86_64, 2 cores                                 │
+│  ├── RAM:  2 GB (lite), 4 GB (full)                        │
+│  ├── Disk: 20 GB (lite), 60 GB (full)                      │
+│  ├── GPU:  Any (VESA fallback)                             │
+│  └── Net:  WiFi or Ethernet                                │
+│                                                             │
+│  RECOMMENDED                                                │
+│  ├── CPU:  x86_64, 4+ cores                                │
+│  ├── RAM:  8 GB+                                            │
+│  ├── Disk: 120 GB+ SSD                                     │
+│  ├── GPU:  AMD/NVIDIA/Intel dedicated                      │
+│  └── Net:  WiFi (monitor mode capable) + Ethernet          │
+│                                                             │
+│  IDLE RESOURCE USAGE (Target)                               │
+│  ├── RAM:  ~300-500 MB (DevilDE)                           │
+│  ├── CPU:  <3% idle                                         │
+│  ├── Boot: <15 seconds to desktop                          │
+│  └── Disk: ~8 GB minimal install                           │
+│                                                             │
+│  COMPARISON (vs competitors)                                │
+│  ├── Kali Linux:    ~1.2 GB idle RAM, ~25s boot            │
+│  ├── Parrot OS:     ~800 MB idle RAM, ~20s boot            │
+│  ├── DevilCore:     ~400 MB idle RAM, ~12s boot  ✓         │
+│  └── (SliTaz base advantage: extreme lightweight)          │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 21. Development Roadmap
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  DEVELOPMENT ROADMAP                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  PHASE 1: FOUNDATION (Months 1-3)                           │
+│  ├── [□] Fork SliTaz base system                           │
+│  ├── [□] Build DevilKernel with hardened config             │
+│  ├── [□] Implement devil-init boot system                  │
+│  ├── [□] Create devil-pkg package manager extension        │
+│  ├── [□] Set up devil-repo infrastructure                  │
+│  ├── [□] Basic devil-cli framework                         │
+│  └── [□] Minimal bootable ISO                              │
+│                                                             │
+│  PHASE 2: CORE SYSTEMS (Months 3-6)                         │
+│  ├── [□] DevilDE desktop environment                       │
+│  ├── [□] Theming (dark red/black identity)                 │
+│  ├── [□] devil-fw firewall system                          │
+│  ├── [□] devil-vpn integration                             │
+│  ├── [□] devil-hardener scripts                            │
+│  ├── [□] Mode system (devil-modes)                         │
+│  ├── [□] Installer (devil-install)                         │
+│  └── [□] Alpha release                                     │
+│                                                             │
+│  PHASE 3: TOOL INTEGRATION (Months 6-9)                     │
+│  ├── [□] Cybersecurity tool suite packaging                │
+│  ├── [□] Development tool suite                            │
+│  ├── [□] Gaming stack (Steam, Lutris, Proton)              │
+│  ├── [□] General purpose apps                              │
+│  ├── [□] devil-arsenal tool launcher                       │
+│  ├── [□] devil-sentinel security monitor                   │
+│  └── [□] Beta release                                      │
+│                                                             │
+│  PHASE 4: POLISH & RELEASE (Months 9-12)                    │
+│  ├── [□] Performance optimization                          │
+│  ├── [□] Security audit                                    │
+│  ├── [□] Documentation                                     │
+│  ├── [□] Community testing                                 │
+│  ├── [□] Bug fixes                                         │
+│  ├── [□] ISO variants (full, lite, cybersec, dev)          │
+│  ├── [□] Website & download infrastructure                 │
+│  └── [□] DevilCore 1.0 Release 🔥                          │
+│                                                             │
+│  FUTURE                                                     │
+│  ├── [□] ARM64 port (Raspberry Pi, Pinebook)               │
+│  ├── [□] Mobile companion app                              │
+│  ├── [□] Cloud deployment images                           │
+│  ├── [□] AI-assisted pentesting tools                      │
+│  ├── [□] DevilCore Certification program                   │
+│  └── [□] Community plugin/extension system                 │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 22. Branding & Identity
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  DEVILCORE BRANDING                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  LOGO CONCEPT:                                              │
+│                                                             │
+│         ╔═══════════════════╗                                │
+│         ║    🔥              ║                                │
+│         ║   ╱▓▓╲             ║                                │
+│         ║  ╱▓▓▓▓╲            ║                                │
+│         ║ ▓▓▓██▓▓▓           ║                                │
+│         ║  ╲▓▓▓▓╱            ║                                │
+│         ║   ╲▓▓╱             ║                                │
+│         ║  DEVILCORE         ║                                │
+│         ╚═══════════════════╝                                │
+│                                                             │
+│  COLOR PALETTE:                                             │
+│  ├── Primary:    #FF1744 (Devil Red)                        │
+│  ├── Secondary:  #B71C1C (Dark Red)                         │
+│  ├── Background: #0D0D0D (Near Black)                       │
+│  ├── Surface:    #1A1A2E (Dark Navy)                        │
+│  ├── Accent:     #FF5722 (Flame Orange)                     │
+│  ├── Text:       #E0E0E0 (Light Grey)                       │
+│  └── Terminal:   #00FF41 (Matrix Green, for terminal)       │
+│                                                             │
+│  TYPOGRAPHY:                                                │
+│  ├── UI:       Inter / Roboto                               │
+│  ├── Terminal: JetBrains Mono Nerd Font                     │
+│  ├── Code:     Fira Code (ligatures)                        │
+│  └── Display:  Custom "DevilCore" logotype                  │
+│                                                             │
+│  TAGLINE: "Lightweight. Lethal. Limitless."                 │
+│                                                             │
+│  BOOT SPLASH (Plymouth):                                    │
+│  ├── Animated devil/flame logo                              │
+│  ├── Red loading bar on black background                    │
+│  └── Subtle flame particle effects                          │
+│                                                             │
+│  GRUB THEME:                                                │
+│  ├── Dark background with subtle circuit pattern            │
+│  ├── Red selection highlight                                │
+│  └── DevilCore logo top-center                              │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Summary Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                                                                     │
+│                    D E V I L C O R E   O S                          │
+│                  ═══════════════════════════                        │
+│                                                                     │
+│  ┌─────────┐  ┌────────┐  ┌────────┐  ┌────────┐  ┌──────────┐   │
+│  │CyberSec │  │  Dev   │  │ Gaming │  │General │  │ Forensic │   │
+│  │ Arsenal │  │ Suite  │  │ Suite  │  │Purpose │  │  Mode    │   │
+│  └────┬────┘  └───┬────┘  └───┬────┘  └───┬────┘  └────┬─────┘   │
+│       │           │           │           │            │           │
+│  ┌────▼───────────▼───────────▼───────────▼────────────▼─────┐    │
+│  │              DEVIL-MODE SYSTEM (Profile Switcher)          │    │
+│  └────────────────────────────┬──────────────────────────────┘    │
+│                               │                                    │
+│  ┌────────────────────────────▼──────────────────────────────┐    │
+│  │                       DevilDE                              │    │
+│  │          (Openbox + Polybar + Rofi + Picom)                │    │
+│  └────────────────────────────┬──────────────────────────────┘    │
+│                               │                                    │
+│  ┌────────────────────────────▼──────────────────────────────┐    │
+│  │                   DEVIL SERVICES                           │    │
+│  │  devil-fw │ devil-vpn │ devil-sentinel │ devil-daemon      │    │
+│  └────────────────────────────┬──────────────────────────────┘    │
+│                               │                                    │
+│  ┌────────────────────────────▼──────────────────────────────┐    │
+│  │                    SYSTEM CORE                             │    │
+│  │  devil-init │ devil-pkg │ devil-cli │ BusyBox+ │ OpenRC    │    │
+│  └────────────────────────────┬──────────────────────────────┘    │
+│                               │                                    │
+│  ┌────────────────────────────▼──────────────────────────────┐    │
+│  │                   DEVILKERNEL                              │    │
+│  │        Hardened Linux 6.x │ Custom Modules │ LSM           │    │
+│  └────────────────────────────┬──────────────────────────────┘    │
+│                               │                                    │
+│  ┌────────────────────────────▼──────────────────────────────┐    │
+│  │                    HARDWARE                                │    │
+│  │      x86_64 │ GPU │ WiFi │ USB │ Storage │ Network        │    │
+│  └───────────────────────────────────────────────────────────┘    │
+│                                                                     │
+│  BASE: SliTaz GNU/Linux │ LICENSE: GPL v3 │ ARCH: x86_64 (ARM64)  │
+│  "Lightweight. Lethal. Limitless." 🔥                              │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+This architecture gives you a complete blueprint to build DevilCore OS. The SliTaz base provides extreme lightweight efficiency, while the layered architecture allows you to add the heavyweight cybersecurity, development, and gaming capabilities on top without bloating the core system. The mode system is the killer feature — one OS that transforms based on your current task.
