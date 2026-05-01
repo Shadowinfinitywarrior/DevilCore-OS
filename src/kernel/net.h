@@ -4,6 +4,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define htons(x) ((uint16_t)((((uint16_t)(x) & 0xff00) >> 8) | (((uint16_t)(x) & 0x00ff) << 8)))
+#define ntohs(x) htons(x)
+#define htonl(x) ((uint32_t)((((uint32_t)(x) & 0xff000000) >> 24) | \
+                             (((uint32_t)(x) & 0x00ff0000) >>  8) | \
+                             (((uint32_t)(x) & 0x0000ff00) <<  8) | \
+                             (((uint32_t)(x) & 0x000000ff) << 24)))
+#define ntohl(x) htonl(x)
+
 #define NET_MAX_DEVICES  4
 #define NET_MAC_ADDR_LEN  6
 #define NET_MTU 1500

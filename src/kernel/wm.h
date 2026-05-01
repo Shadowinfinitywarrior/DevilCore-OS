@@ -199,6 +199,11 @@ void browser_close(void);
 void wm_open_filemanager(void);
 void wm_open_texteditor(void);
 void wm_open_calculator(void);
+void wm_open_calendar(void);
+void wm_open_sysmonitor(void);
+void notes_open(void);
+void fm_open(void);
+void te_open(void);
 void show_sysinfo(void);
 void wm_handle_shortcuts(uint8_t key, uint8_t modifiers);
 
@@ -230,5 +235,9 @@ uint8_t wm_is_cursor_visible(void);
 // Modern UI enhancements
 void wm_set_theme(struct wm_theme new_theme);
 void wm_draw_shadow(struct wm_window *win);
+
+// Notifications
+void wm_notify(const char *text, uint32_t color);
+void wm_draw_notifications(void);
 
 #endif

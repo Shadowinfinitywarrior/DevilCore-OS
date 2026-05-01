@@ -49,6 +49,17 @@ void fb_draw_bitmap_scaled(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint3
 uint32_t fb_make_color(uint8_t r, uint8_t g, uint8_t b);
 uint32_t fb_blend_colors(uint32_t color1, uint32_t color2, uint8_t alpha);
 
+// New drawing primitives
+void fb_draw_circle(uint32_t cx, uint32_t cy, uint32_t r, uint32_t color);
+void fb_fill_circle(uint32_t cx, uint32_t cy, uint32_t r, uint32_t color);
+void fb_fill_triangle(uint32_t x1, uint32_t y1, uint32_t x2, uint32_t y2, uint32_t x3, uint32_t y3, uint32_t color);
+void fb_draw_string_scaled(uint32_t x, uint32_t y, const char *str, uint32_t fg_color, uint32_t scale);
+void fb_draw_string_centered(uint32_t cx, uint32_t y, uint32_t w, const char *str, uint32_t fg_color);
+void fb_blur_region(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+void fb_draw_char_colored(uint32_t x, uint32_t y, char c, uint32_t fg_color);
+void fb_draw_string_aa(uint32_t x, uint32_t y, const char *str, uint32_t fg_color);
+void fb_fill_rect_gradient_radial(uint32_t cx, uint32_t cy, uint32_t r, uint32_t color1, uint32_t color2);
+
 extern struct framebuffer *framebuffer;
 extern uint32_t fb_width;
 extern uint32_t fb_height;

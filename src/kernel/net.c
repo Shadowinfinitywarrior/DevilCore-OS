@@ -7,11 +7,16 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "arp.h"
+#include "icmp.h"
+#include "udp.h"
+
 #define ETH_TYPE_ARP 0x0806
 #define ETH_TYPE_IPV4 0x0800
 
-#define ARP_OP_REQUEST 1
-#define ARP_OP_REPLY 2
+static uint16_t packet_id = 0;
+
+extern void netscanner_log_packet(struct net_packet *packet);
 
 struct eth_header {
     uint8_t dest_mac[6];
@@ -113,35 +118,22 @@ static uint16_t net_checksum_ipv4(struct ipv4_header *header, size_t length) {
     return (uint16_t)~sum;
 }
 
-static void net_handle_arp(struct net_device *dev, struct arp_packet *arp) {
-    if (arp->opcode == ARP_OP_REQUEST) {
-        if (arp->target_ip == dev->ip_addr) {
-            uint8_t sender_mac[6] = {0};
-            memcpy(sender_mac, dev->mac_addr, 6);
-            
-            arp->opcode = ARP_OP_REPLY;
-            memcpy(arp->target_mac, arp->sender_mac, 6);
-            memcpy(arp->sender_mac, sender_mac, 6);
-            arp->target_ip = arp->sender_ip;
-            arp->sender_ip = dev->ip_addr;
-            
-            struct net_packet packet;
-            memset(&packet, 0, sizeof(packet));
-            memcpy(packet.dest_mac, arp->target_mac, 6);
-            memcpy(packet.src_mac, sender_mac, 6);
-            packet.protocol = ETH_TYPE_ARP;
-            packet.data = arp;
-            packet.length = sizeof(struct arp_packet);
-            
-            dev->send_packet(dev, &packet, packet.length);
-        }
-    }
-}
+
 
 static void net_handle_ipv4(struct net_device *dev, struct ipv4_header *ipv4, size_t length) {
-    (void)dev;
-    (void)ipv4;
-    (void)length;
+    if (length < sizeof(struct ipv4_header)) return;
+    
+    // Check checksum
+    // ... skipping checksum verification for now ...
+
+    size_t payload_len = length - sizeof(struct ipv4_header); // ignoring IHL for simplicity assuming 5
+    void *payload = (uint8_t *)ipv4 + sizeof(struct ipv4_header);
+
+    if (ipv4->protocol == 1) { // ICMP
+        icmp_handle_packet(dev, ipv4, payload, payload_len);
+    } else if (ipv4->protocol == 17) { // UDP
+        udp_handle_packet(dev, ipv4, payload, payload_len);
+    }
 }
 
 void net_rx_handler(struct net_packet *packet) {
@@ -149,12 +141,13 @@ void net_rx_handler(struct net_packet *packet) {
         return;
     }
     
+    netscanner_log_packet(packet);
+    
     struct eth_header *eth = (struct eth_header *)packet->data;
     
-    if (eth->type == ETH_TYPE_ARP) {
-        struct arp_packet *arp = (struct arp_packet *)((uint8_t *)eth + sizeof(struct eth_header));
-        net_handle_arp(packet->device, arp);
-    } else if (eth->type == ETH_TYPE_IPV4) {
+    if (eth->type == htons(ETH_TYPE_ARP)) {
+        arp_handle_packet(packet->device, eth + 1, packet->length - sizeof(struct eth_header));
+    } else if (eth->type == htons(ETH_TYPE_IPV4)) {
         struct ipv4_header *ipv4 = (struct ipv4_header *)((uint8_t *)eth + sizeof(struct eth_header));
         net_handle_ipv4(packet->device, ipv4, packet->length - sizeof(struct eth_header));
     }
@@ -163,6 +156,9 @@ void net_rx_handler(struct net_packet *packet) {
 int net_init(void) {
     memset(net_devices, 0, sizeof(net_devices));
     net_device_count = 0;
+    
+    arp_init();
+    udp_init();
     
     return 0;
 }
@@ -215,12 +211,52 @@ int net_set_rx_handler(struct net_device *dev, net_rx_handler_t handler) {
 }
 
 int net_ipv4_send(uint32_t dest_ip, uint16_t protocol, const void *data, size_t length) {
-    (void)dest_ip;
-    (void)protocol;
-    (void)data;
-    (void)length;
-    
-    return -1;
+    // For now use the first available device that is UP
+    struct net_device *dev = NULL;
+    for (uint32_t i = 0; i < net_device_count; i++) {
+        if (net_devices[i]->up) {
+            dev = net_devices[i];
+            break;
+        }
+    }
+    if (!dev) return -1;
+
+    // Resolve MAC address
+    uint8_t *dest_mac = arp_lookup(dest_ip);
+    if (!dest_mac) {
+        // Send ARP request and drop packet (or queue it in a real OS)
+        arp_request(dev, dest_ip);
+        return -1;
+    }
+
+    size_t packet_len = sizeof(struct eth_header) + sizeof(struct ipv4_header) + length;
+    uint8_t *packet = kmalloc(packet_len);
+    if (!packet) return -1;
+
+    struct eth_header *eth = (struct eth_header *)packet;
+    memcpy(eth->dest_mac, dest_mac, 6);
+    memcpy(eth->src_mac, dev->mac_addr, 6);
+    eth->type = htons(ETH_TYPE_IPV4);
+
+    struct ipv4_header *ipv4 = (struct ipv4_header *)(packet + sizeof(struct eth_header));
+    ipv4->version_ihl = 0x45; // Version 4, IHL 5
+    ipv4->tos = 0;
+    ipv4->total_length = htons((uint16_t)(sizeof(struct ipv4_header) + length));
+    packet_id++;
+    ipv4->id = htons(packet_id);
+    ipv4->flags_fragment = 0;
+    ipv4->ttl = 64;
+    ipv4->protocol = protocol;
+    ipv4->src_ip = dev->ip_addr;
+    ipv4->dest_ip = dest_ip;
+    ipv4->checksum = 0;
+    ipv4->checksum = net_checksum_ipv4(ipv4, sizeof(struct ipv4_header));
+
+    memcpy(packet + sizeof(struct eth_header) + sizeof(struct ipv4_header), data, length);
+
+    int ret = net_send(dev, packet, packet_len);
+    kfree(packet);
+    return ret;
 }
 
 int net_ipv4_recv(struct net_packet *packet) {

@@ -5,7 +5,7 @@
 struct framebuffer *framebuffer;
 
 // Standard 8x8 Font Data (95 characters, from space to ~)
-static const uint8_t font_data[128][8] = {
+const uint8_t font_data[128][8] = {
     [0x20] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // space
     [0x21] = {0x18, 0x18, 0x18, 0x18, 0x00, 0x00, 0x18, 0x00}, // !
     [0x22] = {0x6c, 0x6c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // "
@@ -440,6 +440,214 @@ void fb_draw_bitmap_scaled(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint3
                 uint8_t out_b = (b * alpha + bg_b * (255 - alpha)) / 255;
                 
                 fb_put_pixel(x + i, y + j, (out_r << 16) | (out_g << 8) | out_b);
+            }
+        }
+    }
+}
+
+void fb_draw_circle(uint32_t cx, uint32_t cy, uint32_t r, uint32_t color) {
+    if (framebuffer == NULL || r == 0) return;
+    int32_t x = (int32_t)r, y = 0;
+    int32_t d = 1 - x;
+    while (x >= y) {
+        fb_put_pixel(cx + x, cy + y, color);
+        fb_put_pixel(cx - x, cy + y, color);
+        fb_put_pixel(cx + x, cy - y, color);
+        fb_put_pixel(cx - x, cy - y, color);
+        fb_put_pixel(cx + y, cy + x, color);
+        fb_put_pixel(cx - y, cy + x, color);
+        fb_put_pixel(cx + y, cy - x, color);
+        fb_put_pixel(cx - y, cy - x, color);
+        y++;
+        if (d <= 0) { d += 2 * y + 1; }
+        else { x--; d += 2 * (y - x) + 1; }
+    }
+}
+
+void fb_fill_circle(uint32_t cx, uint32_t cy, uint32_t r, uint32_t color) {
+    if (framebuffer == NULL || r == 0) return;
+    for (int32_t dy = -(int32_t)r; dy <= (int32_t)r; dy++) {
+        for (int32_t dx = -(int32_t)r; dx <= (int32_t)r; dx++) {
+            if (dx * dx + dy * dy <= (int32_t)(r * r)) {
+                fb_put_pixel(cx + dx, cy + dy, color);
+            }
+        }
+    }
+}
+
+void fb_fill_triangle(uint32_t x1, uint32_t y1, uint32_t x2, uint32_t y2, uint32_t x3, uint32_t y3, uint32_t color) {
+    // Sort vertices by y
+    if (y1 > y2) { uint32_t t; t=x1;x1=x2;x2=t; t=y1;y1=y2;y2=t; }
+    if (y1 > y3) { uint32_t t; t=x1;x1=x3;x3=t; t=y1;y1=y3;y3=t; }
+    if (y2 > y3) { uint32_t t; t=x2;x2=x3;x3=t; t=y2;y2=y3;y3=t; }
+    if (y3 == y1) return;
+    for (uint32_t y = y1; y <= y3; y++) {
+        int32_t xa = (int32_t)x1 + (int32_t)(x3 - x1) * (int32_t)(y - y1) / (int32_t)(y3 - y1);
+        int32_t xb;
+        if (y < y2) {
+            if (y2 == y1) xb = (int32_t)x1;
+            else xb = (int32_t)x1 + (int32_t)(x2 - x1) * (int32_t)(y - y1) / (int32_t)(y2 - y1);
+        } else {
+            if (y3 == y2) xb = (int32_t)x2;
+            else xb = (int32_t)x2 + (int32_t)(x3 - x2) * (int32_t)(y - y2) / (int32_t)(y3 - y2);
+        }
+        if (xa > xb) { int32_t t = xa; xa = xb; xb = t; }
+        for (int32_t xx = xa; xx <= xb; xx++) {
+            fb_put_pixel((uint32_t)xx, y, color);
+        }
+    }
+}
+
+void fb_draw_char_colored(uint32_t x, uint32_t y, char c, uint32_t fg_color) {
+    fb_draw_char(x, y, c, fg_color, 0);
+}
+
+void fb_draw_string_scaled(uint32_t x, uint32_t y, const char *str, uint32_t fg_color, uint32_t scale) {
+    if (framebuffer == NULL || str == NULL || scale == 0) return;
+    uint32_t pos_x = x;
+    while (*str) {
+        uint8_t ch = (uint8_t)*str;
+        if (ch >= 128) ch = 0;
+        for (uint8_t row = 0; row < 8; row++) {
+            extern const uint8_t font_data[128][8];
+            uint8_t data = font_data[ch][row];
+            for (uint8_t col = 0; col < 8; col++) {
+                if (data & (0x80 >> col)) {
+                    fb_fill_rect(pos_x + col * scale, y + row * scale, scale, scale, fg_color);
+                }
+            }
+        }
+        str++;
+        pos_x += 8 * scale;
+    }
+}
+
+void fb_draw_string_centered(uint32_t cx, uint32_t y, uint32_t w, const char *str, uint32_t fg_color) {
+    if (str == NULL) return;
+    uint32_t len = 0;
+    const char *p = str;
+    while (*p++) len++;
+    uint32_t text_w = len * 8;
+    uint32_t x = cx;
+    if (text_w < w) x = cx + (w - text_w) / 2;
+    fb_draw_string(x, y, str, fg_color, 0);
+}
+
+void fb_blur_region(uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
+    if (framebuffer == NULL || framebuffer->backbuffer == NULL) return;
+    if (x >= framebuffer->width || y >= framebuffer->height) return;
+    if (x + w > framebuffer->width) w = framebuffer->width - x;
+    if (y + h > framebuffer->height) h = framebuffer->height - y;
+    // Optimized Separable Blur (1D Horizontal then 1D Vertical)
+    uint32_t *temp_buf = kmalloc(w * sizeof(uint32_t));
+    if (!temp_buf) return;
+    
+    // Vertical pass (in-place approximation for simplicity, writing back)
+    for (uint32_t i = x; i < x + w; i++) {
+        uint32_t prev_r = 0, prev_g = 0, prev_b = 0;
+        for (uint32_t j = y; j < y + h; j++) {
+            uint32_t off = j * framebuffer->pitch + i * 4;
+            uint32_t px = *((uint32_t *)((uint8_t *)framebuffer->backbuffer + off));
+            uint32_t r = (px >> 16) & 0xFF;
+            uint32_t g = (px >> 8) & 0xFF;
+            uint32_t b = px & 0xFF;
+            
+            if (j > y) {
+                r = (r + prev_r) / 2;
+                g = (g + prev_g) / 2;
+                b = (b + prev_b) / 2;
+                *((uint32_t *)((uint8_t *)framebuffer->backbuffer + off)) = (r << 16) | (g << 8) | b;
+            }
+            prev_r = r; prev_g = g; prev_b = b;
+        }
+    }
+    
+    // Horizontal pass
+    for (uint32_t j = y; j < y + h; j++) {
+        uint32_t prev_r = 0, prev_g = 0, prev_b = 0;
+        for (uint32_t i = x; i < x + w; i++) {
+            uint32_t off = j * framebuffer->pitch + i * 4;
+            uint32_t px = *((uint32_t *)((uint8_t *)framebuffer->backbuffer + off));
+            uint32_t r = (px >> 16) & 0xFF;
+            uint32_t g = (px >> 8) & 0xFF;
+            uint32_t b = px & 0xFF;
+            
+            if (i > x) {
+                r = (r + prev_r) / 2;
+                g = (g + prev_g) / 2;
+                b = (b + prev_b) / 2;
+                *((uint32_t *)((uint8_t *)framebuffer->backbuffer + off)) = (r << 16) | (g << 8) | b;
+            }
+            prev_r = r; prev_g = g; prev_b = b;
+        }
+    }
+    
+    kfree(temp_buf);
+}
+
+void fb_draw_string_aa(uint32_t x, uint32_t y, const char *str, uint32_t fg_color) {
+    if (framebuffer == NULL || str == NULL) return;
+    uint32_t pos_x = x;
+    uint32_t r_fg = (fg_color >> 16) & 0xFF;
+    uint32_t g_fg = (fg_color >> 8) & 0xFF;
+    uint32_t b_fg = fg_color & 0xFF;
+
+    while (*str) {
+        uint8_t ch = (uint8_t)*str;
+        if (ch >= 128) ch = 0;
+        for (uint8_t row = 0; row < 8; row++) {
+            extern const uint8_t font_data[128][8];
+            uint8_t data = font_data[ch][row];
+            for (uint8_t col = 0; col < 8; col++) {
+                if (data & (0x80 >> col)) {
+                    // Simple AA by bleeding into adjacent pixels with 50% opacity
+                    fb_put_pixel(pos_x + col, y + row, fg_color);
+                    
+                    if (!(data & (0x80 >> (col + 1))) && col < 7) {
+                        uint32_t off = (y + row) * framebuffer->pitch + (pos_x + col + 1) * 4;
+                        uint32_t bg = *((uint32_t *)((uint8_t *)framebuffer->backbuffer + off));
+                        uint32_t r = (((bg >> 16) & 0xFF) + r_fg) / 2;
+                        uint32_t g = (((bg >> 8) & 0xFF) + g_fg) / 2;
+                        uint32_t b = ((bg & 0xFF) + b_fg) / 2;
+                        fb_put_pixel(pos_x + col + 1, y + row, (r << 16) | (g << 8) | b);
+                    }
+                }
+            }
+        }
+        str++;
+        pos_x += 8;
+    }
+}
+
+void fb_fill_rect_gradient_radial(uint32_t cx, uint32_t cy, uint32_t r, uint32_t color1, uint32_t color2) {
+    if (framebuffer == NULL || r == 0) return;
+    
+    uint32_t r1 = (color1 >> 16) & 0xFF;
+    uint32_t g1 = (color1 >> 8) & 0xFF;
+    uint32_t b1 = color1 & 0xFF;
+    
+    uint32_t r2 = (color2 >> 16) & 0xFF;
+    uint32_t g2 = (color2 >> 8) & 0xFF;
+    uint32_t b2 = color2 & 0xFF;
+    
+    for (int32_t dy = -(int32_t)r; dy <= (int32_t)r; dy++) {
+        for (int32_t dx = -(int32_t)r; dx <= (int32_t)r; dx++) {
+            uint32_t dist_sq = dx * dx + dy * dy;
+            if (dist_sq <= r * r) {
+                // Integer square root approx
+                uint32_t dist = 0;
+                while ((dist + 1) * (dist + 1) <= dist_sq) dist++;
+                
+                uint32_t ratio = (dist * 255) / r; // 0 to 255
+                uint32_t inv_ratio = 255 - ratio;
+                
+                uint32_t nr = (r1 * inv_ratio + r2 * ratio) / 255;
+                uint32_t ng = (g1 * inv_ratio + g2 * ratio) / 255;
+                uint32_t nb = (b1 * inv_ratio + b2 * ratio) / 255;
+                
+                // Read background and alpha blend (assume gradient is additive or screen-like for wallpaper, but we'll just alpha blend it manually if needed, or straight overwrite)
+                // We'll just overwrite for simplicity since it's a solid gradient background
+                fb_put_pixel(cx + dx, cy + dy, (nr << 16) | (ng << 8) | nb);
             }
         }
     }

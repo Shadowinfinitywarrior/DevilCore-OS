@@ -99,7 +99,37 @@ static void rtl8139_receive(struct rtl8139_private *priv) {
                 break;
             }
             
-            rx_head = (rx_head + packet_length + 4 + 3) & 0xfff;
+            uint32_t data_length = packet_length - 4; // exclude CRC
+            uint8_t *packet_data = (uint8_t *)priv->rx_buffer + ring_offset + 4; // skip 4 byte header
+            
+            // Handle wrap-around
+            uint8_t *linear_buffer = kmalloc(data_length);
+            if (linear_buffer) {
+                if (ring_offset + 4 + data_length > RTL8139_RX_BUF_SIZE) {
+                    uint32_t chunk1 = RTL8139_RX_BUF_SIZE - (ring_offset + 4);
+                    uint32_t chunk2 = data_length - chunk1;
+                    memcpy(linear_buffer, packet_data, chunk1);
+                    memcpy(linear_buffer + chunk1, priv->rx_buffer, chunk2);
+                } else {
+                    memcpy(linear_buffer, packet_data, data_length);
+                }
+                
+                struct net_packet net_pkt;
+                net_pkt.device = &priv->net_dev;
+                net_pkt.data = linear_buffer;
+                net_pkt.length = data_length;
+                
+                // Dispatch
+                extern void net_rx_handler(struct net_packet *packet);
+                net_rx_handler(&net_pkt);
+                
+                kfree(linear_buffer);
+            }
+            
+            rx_head = (rx_head + packet_length + 4 + 3) & ~3; // align to 4 bytes
+            if (rx_head >= RTL8139_RX_BUF_SIZE) {
+                rx_head -= RTL8139_RX_BUF_SIZE;
+            }
             
             rtl8139_writew(priv, 0x18, rx_head);
         }

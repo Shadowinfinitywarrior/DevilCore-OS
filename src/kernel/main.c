@@ -17,6 +17,11 @@
 #include "filemanager.h"
 #include "texteditor.h"
 #include "calculator.h"
+#include "sysmonitor.h"
+#include "hexeditor.h"
+#include "netscanner.h"
+#include "logviewer.h"
+#include "notes.h"
 #include "settings.h"
 #include "memory_compress.h"
 #include "gdt.h"
@@ -31,22 +36,34 @@
 #include "cfs_scheduler.h"
 
 void draw_sysinfo_content(struct wm_window *win) {
-    char info[64];
+    char info[128];
     char comp_info[64];
-    fb_draw_string(win->widget.x + 10, win->widget.y + 10, "DevilCore OS v0.3", 0x0000ff00, 0);
-    fb_draw_string(win->widget.x + 10, win->widget.y + 30, "Ethical Hacking Environment", 0x00ffffff, 0);
     
-    sprintf(info, "CPU: x86_64");
-    fb_draw_string(win->widget.x + 10, win->widget.y + 60, info, 0x00aaaaaa, 0);
+    // Draw background
+    fb_fill_rect(win->widget.x, win->widget.y, win->widget.width, win->widget.height, 0x001a1a1a);
     
-    sprintf(info, "Mem: %u MB Total", (pmm_total_pages() * 4096) / (1024 * 1024));
-    fb_draw_string(win->widget.x + 10, win->widget.y + 80, info, 0x00aaaaaa, 0);
+    // Logo area
+    fb_fill_rect_rounded(win->widget.x + 10, win->widget.y + 10, 50, 50, 8, 0x0044ffcc);
+    fb_draw_string(win->widget.x + 22, win->widget.y + 28, "DC", 0x00000000, 0);
     
+    fb_draw_string(win->widget.x + 70, win->widget.y + 15, "DevilCore OS", 0x00ffffff, 0);
+    fb_draw_string(win->widget.x + 70, win->widget.y + 35, "v2.0 Premium Edition", 0x00888888, 0);
+    
+    fb_draw_line(win->widget.x + 10, win->widget.y + 70, win->widget.x + win->widget.width - 10, win->widget.y + 70, 0x00333333);
+
+    sprintf(info, "Architecture: x86_64 (64-bit)");
+    fb_draw_string(win->widget.x + 15, win->widget.y + 85, info, 0x00cccccc, 0);
+
+    sprintf(info, "Memory: %u MB Total RAM", (pmm_total_pages() * 4) / 1024);
+    fb_draw_string(win->widget.x + 15, win->widget.y + 105, info, 0x00cccccc, 0);
+
     sprintf(info, "Uptime: %u sec", (uint32_t)(timer_ticks() / 100));
-    fb_draw_string(win->widget.x + 10, win->widget.y + 100, info, 0x00aaaaaa, 0);
-    
+    fb_draw_string(win->widget.x + 15, win->widget.y + 125, info, 0x00cccccc, 0);
+
     memory_compression_format_stats(comp_info, sizeof(comp_info));
-    fb_draw_string(win->widget.x + 10, win->widget.y + 120, comp_info, 0x00aaaaaa, 0);
+    fb_draw_string(win->widget.x + 15, win->widget.y + 145, comp_info, 0x00aaaaaa, 0);
+    
+    fb_draw_string(win->widget.x + 15, win->widget.y + 175, "The Ultimate Hacking Environment", 0x0000ff00, 0);
 }
 
 void show_sysinfo(void) {
@@ -304,17 +321,15 @@ void kernel_main(void) {
     wm_add_icon("File Mgr", "filemanager", 40, 200, fm_open);
     wm_add_icon("Text Ed", "texteditor", 40, 300, te_open);
     wm_add_icon("Calc", "calculator", 40, 400, calc_open);
-    wm_add_icon("Browser", "browser", 140, 100, browser_open);
-    wm_add_icon("Settings", "settings", 140, 200, settings_open);
-    wm_add_icon("System", "system_monitor", 140, 300, show_sysinfo);
-    wm_add_icon("Notes", "notes", 240, 100, NULL);
-    wm_add_icon("Music", "music", 240, 200, NULL);
-    wm_add_icon("Pictures", "pictures", 240, 300, NULL);
-    wm_add_icon("Videos", "videos", 240, 400, NULL);
-    wm_add_icon("Downloads", "downloads", 340, 100, NULL);
-    wm_add_icon("Documents", "document", 340, 200, NULL);
-    wm_add_icon("Disk", "disk", 340, 300, NULL);
-    wm_add_icon("Network", "network", 340, 400, NULL);
+    
+    wm_add_icon("System", "system_monitor", 140, 100, sysmonitor_open);
+    wm_add_icon("Hex Edit", "document", 140, 200, hexeditor_open);
+    wm_add_icon("Net Scan", "network", 140, 300, netscanner_open);
+    wm_add_icon("Logs", "document", 140, 400, logviewer_open);
+    
+    wm_add_icon("Notes", "notes", 240, 100, notes_open);
+    wm_add_icon("Settings", "settings", 240, 200, settings_open);
+    wm_add_icon("Browser", "browser", 240, 300, browser_open);
 
     // Open initial terminal
     open_terminal();

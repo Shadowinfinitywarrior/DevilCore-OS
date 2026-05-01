@@ -31,6 +31,17 @@ struct wm_theme current_theme = {
 };
 
 struct wm_desktop *desktop = NULL;
+
+// Notifications
+#define MAX_NOTIFICATIONS 5
+struct wm_notification {
+    char text[64];
+    uint32_t color;
+    uint64_t spawn_time;
+    uint8_t active;
+};
+static struct wm_notification notifications[MAX_NOTIFICATIONS];
+
 static uint32_t next_window_id = 1;
 static struct wm_window *dragged_window = NULL;
 
@@ -258,6 +269,18 @@ void wm_process_events(void) {
                 }
             } else if (event.type == WM_EVENT_MOUSE_RELEASE) {
                 if (dragged_window != NULL) {
+                    uint32_t sw = framebuffer->width;
+                    uint32_t sh = framebuffer->height - desktop->taskbar_height;
+                    
+                    if (desktop->mouse_x < 10) {
+                        // Snap Left
+                        wm_move_window(dragged_window, 0, 0);
+                        wm_resize_window(dragged_window, sw / 2, sh);
+                    } else if (desktop->mouse_x > (int32_t)sw - 10) {
+                        // Snap Right
+                        wm_move_window(dragged_window, sw / 2, 0);
+                        wm_resize_window(dragged_window, sw / 2, sh);
+                    }
                     dragged_window = NULL;
                 }
                 wm_widget_dispatch_event(&desktop->widget, &event);
@@ -463,8 +486,8 @@ void wm_start_menu_draw(struct wm_widget *widget) {
     fb_draw_line(sm->widget.x + 15, y_offset + 12, sm->widget.x + menu_w - 15, y_offset + 12, 0x00444444);
     y_offset += 20;
     
-    const char *prod_apps[] = {"Terminal (Win+T)", "File Manager (Win+E)", "Text Editor (Win+N)", "Calculator (Win+C)", "Notes", "Music", "Pictures", "Videos"};
-    const char *prod_icons[] = {"terminal", "filemanager", "texteditor", "calculator", "notes", "music", "pictures", "videos"};
+    const char *prod_apps[] = {"Terminal (Win+T)", "File Manager (Win+E)", "Text Editor (Win+N)", "Calculator (Win+C)", "Calendar (Win+K)", "Notes", "Music", "Pictures"};
+    const char *prod_icons[] = {"terminal", "filemanager", "texteditor", "calculator", "calendar", "notes", "music", "pictures"};
     for (int i = 0; i < 8; ++i) {
         const struct icon_data *app_icon = icon_get(prod_icons[i]);
         if (app_icon) draw_icon(sm->widget.x + 20, y_offset, app_icon);
@@ -478,8 +501,8 @@ void wm_start_menu_draw(struct wm_widget *widget) {
     fb_draw_line(sm->widget.x + 15, y_offset + 12, sm->widget.x + menu_w - 15, y_offset + 12, 0x00444444);
     y_offset += 20;
     
-    const char *sys_apps[] = {"Privacy Browser (Win+B)", "Settings (Win+I)", "System Monitor", "About DevilCore", "Disk Manager", "Network", "Logs", "Tasks"};
-    const char *sys_icons[] = {"browser", "settings", "system_monitor", "info", "disk", "network", "logs", "cpu"};
+    const char *sys_apps[] = {"Privacy Browser (Win+B)", "Settings (Win+I)", "System Monitor", "About DevilCore", "Tasks", "Network", "Logs", "Security"};
+    const char *sys_icons[] = {"browser", "settings", "system_monitor", "info", "cpu", "network", "logs", "lock"};
     for (int i = 0; i < 8; ++i) {
         const struct icon_data *app_icon = icon_get(sys_icons[i]);
         if (app_icon) draw_icon(sm->widget.x + 20, y_offset, app_icon);
@@ -517,24 +540,26 @@ static void wm_start_menu_on_event(struct wm_widget *widget, struct wm_event *ev
         // Get relative Y position in menu
         int32_t rel_y = event->y - (desktop->widget.height - 40 - 500 + 95);
         
-        // Productivity section: y = 0 to 128 (4 items * 32px)
-        if (rel_y >= 0 && rel_y < 128) {
+        // Productivity section: y = 0 to 256 (8 items * 32px)
+        if (rel_y >= 0 && rel_y < 256) {
             int idx = rel_y / 32;
             switch (idx) {
                 case 0: wm_open_terminal(); break;
                 case 1: wm_open_filemanager(); break;
                 case 2: wm_open_texteditor(); break;
                 case 3: wm_open_calculator(); break;
+                case 4: wm_open_calendar(); break;
+                case 5: notes_open(); break;
             }
             wm_hide_start_menu();
         }
-        // System section: y = 133 to 261
-        else if (rel_y >= 133 && rel_y < 261) {
-            int idx = (rel_y - 133) / 32;
+        // System section: y = 261 to 450
+        else if (rel_y >= 261 && rel_y < 517) {
+            int idx = (rel_y - 261) / 32;
             switch (idx) {
                 case 0: browser_open(); break;
                 case 1: wm_open_settings(); break;
-                case 2: show_sysinfo(); break; // System Monitor
+                case 2: wm_open_sysmonitor(); break; // Live System Monitor
                 case 3: wm_show_about(); break;
             }
             wm_hide_start_menu();
@@ -702,12 +727,11 @@ void wm_refresh(void) {
         cursor_visible = !cursor_visible;
         last_tick = ticks;
         
-        // Only mark focused window as dirty - don't redraw immediately
-        // The main loop will handle the actual redraw
+        // Mark focused window as dirty
         if (desktop->focused_window != NULL) {
             wm_widget_mark_dirty(&desktop->focused_window->widget);
-            desktop->needs_redraw = 1;
         }
+        desktop->needs_redraw = 1; // Force redraw to animate background
     }
 }
 
@@ -807,33 +831,32 @@ static void wm_draw_system_monitor(void) {
     fb_draw_string(widget_x + widget_w - pill_w - 4, widget_y + 122, task_info, 0x00aaaaaa, 0);
 }
 
-// Modern desktop background with subtle pattern
+// Modern desktop background with a professional static gradient
 static void draw_modern_desktop_bg(void) {
     uint32_t w = framebuffer->width;
     uint32_t h = framebuffer->height - desktop->taskbar_height;
     
-    // Rich dark gradient background (modern dark theme)
-    fb_fill_rect_gradient_v(0, 0, w, h, 0x001e1e2e, 0x00161620);
+    // Professional deep blue/gray gradient (modern look)
+    fb_fill_rect_gradient_v(0, 0, w, h, 0x001a1a2e, 0x000f0f1a); 
     
-    // Subtle grid pattern overlay (very faint)
-    for (uint32_t y = 0; y < h; y += 60) {
-        fb_draw_line(0, y, w, y, 0x00252535);
+    // Subtle spotlight in center-top
+    fb_fill_rect_gradient_radial(w / 2, h / 3, h, 0x002a2a4e, 0x001a1a2e);
+
+    // Static subtle grid pattern (professional, not animated)
+    for (int32_t y = 0; y < (int32_t)h; y += 40) {
+        fb_draw_line(0, y, w, y, 0x00222233); 
     }
-    for (uint32_t x = 0; x < w; x += 60) {
-        fb_draw_line(x, 0, x, h, 0x00252535);
+    for (int32_t x = 0; x < (int32_t)w; x += 40) {
+        fb_draw_line(x, 0, x, h, 0x00222233);
     }
-    
-    // Subtle vignette effect (darker corners)
-    for (int i = 0; i < 40; i++) {
-        uint8_t alpha = (40 - i) * 2;
-        // Top edge
-        fb_fill_rect_alpha(0, i, w, 1, 0x00000000, alpha);
-        // Bottom edge (above taskbar)
-        fb_fill_rect_alpha(0, h - 1 - i, w, 1, 0x00000000, alpha);
-        // Left edge
-        fb_fill_rect_alpha(i, 0, 1, h, 0x00000000, alpha);
-        // Right edge
-        fb_fill_rect_alpha(w - 1 - i, 0, 1, h, 0x00000000, alpha);
+
+    // Subtle vignette effect (optimized)
+    for (int i = 0; i < 20; i++) {
+        uint8_t alpha = (20 - i) * 3;
+        fb_fill_rect_alpha(0, i, w, 1, 0x00000000, alpha); // Top
+        fb_fill_rect_alpha(0, h - 1 - i, w, 1, 0x00000000, alpha); // Bottom
+        fb_fill_rect_alpha(i, 0, 1, h, 0x00000000, alpha); // Left
+        fb_fill_rect_alpha(w - 1 - i, 0, 1, h, 0x00000000, alpha); // Right
     }
 }
 
@@ -851,8 +874,8 @@ void wm_draw_desktop(void) {
     draw_modern_desktop_bg();
     
     // Header area with OS branding (top left)
-    fb_draw_string(20, 20, "DevilCore OS", 0x00ffffff, 0);
-    fb_draw_string(20, 35, "v0.1", 0x00888888, 0);
+    fb_draw_string_aa(20, 20, "DevilCore OS", 0x0044ffcc);
+    fb_draw_string(20, 35, "v2.0 Premium", 0x00888888, 0);
     
     // Mark all desktop children as dirty so they redraw after background clear
     wm_widget_mark_dirty_recursive(&desktop->widget);
@@ -864,7 +887,9 @@ void wm_draw_desktop(void) {
     wm_widget_draw(&desktop->widget);
 
     wm_draw_taskbar();
+    wm_draw_notifications();
     wm_draw_cursor();
+
     
     fb_flip();
 }
@@ -1046,28 +1071,34 @@ void wm_draw_taskbar(void) {
     // System tray items
     uint32_t item_x = tray_x + 10;
     
-    // Network icon (N)
+    // Network icon (Pixel art)
     fb_fill_rect_rounded(item_x, y + 8, 26, taskbar_h - 16, 3, 0x00303030);
-    fb_draw_string(item_x + 7, y + 14, "N", 0x00aaaaaa, 0);
+    fb_fill_rect(item_x + 6, y + 20, 14, 2, 0x0000ff00); // Base
+    fb_fill_rect(item_x + 9, y + 16, 8, 2, 0x0000ff00);  // Middle
+    fb_fill_rect(item_x + 12, y + 12, 2, 2, 0x0000ff00); // Top
     item_x += 32;
     
-    // Volume icon (V)  
+    // Volume icon (Pixel art)  
     fb_fill_rect_rounded(item_x, y + 8, 26, taskbar_h - 16, 3, 0x00303030);
-    fb_draw_string(item_x + 7, y + 14, "V", 0x00aaaaaa, 0);
+    fb_fill_rect(item_x + 6, y + 14, 4, 12, 0x00ffffff); // Speaker body
+    fb_fill_triangle(item_x + 10, y + 14, item_x + 10, y + 26, item_x + 18, y + 10, 0x00ffffff); // Cone (approx)
     item_x += 32;
     
-    // Battery/Power icon (B)
+    // Battery/Power icon (Pixel art)
     fb_fill_rect_rounded(item_x, y + 8, 26, taskbar_h - 16, 3, 0x00303030);
-    fb_draw_string(item_x + 7, y + 14, "B", 0x00aaaaaa, 0);
+    fb_draw_rect_outline(item_x + 6, y + 14, 14, 10, 0x0000ff00);
+    fb_fill_rect(item_x + 20, y + 17, 2, 4, 0x0000ff00); // Tip
+    fb_fill_rect(item_x + 8, y + 16, 8, 6, 0x0000ff00);  // Charge
     item_x += 32;
     
     // Clock (rightmost in tray)
     uint64_t uptime_sec = timer_ticks() / 100;
+    uint32_t sec = (uint32_t)(uptime_sec % 60);
     uint32_t min = (uint32_t)((uptime_sec / 60) % 60);
     uint32_t hr = (uint32_t)(uptime_sec / 3600) % 24;
     char clock[32];
-    sprintf(clock, "%02u:%02u", hr, min);
-    fb_draw_string(screen_w - 75, y + 14, clock, 0x00ffffff, 0);
+    sprintf(clock, "%02u:%02u:%02u", hr, min, sec);
+    fb_draw_string(screen_w - 95, y + 14, clock, 0x00ffffff, 0);
     
     // Draw separator line on right edge of taskbar area
     fb_draw_line(screen_w - 1, y, screen_w - 1, screen_h, 0x00101010);
@@ -1078,8 +1109,82 @@ void wm_draw_taskbar(void) {
     }
 }
 
+#include "browser.h"
+#include "settings.h"
+#include "sysmonitor.h"
+#include "calendar.h"
+
 // Track hovered window button for visual feedback
 static int hovered_button = -1; // -1=none, 0=min, 1=max, 2=close
+
+void wm_open_calendar(void) {
+    calendar_open();
+}
+
+void wm_open_sysmonitor(void) {
+    sysmonitor_open();
+}
+
+struct run_data {
+    char command[256];
+    uint32_t cursor;
+};
+
+static void run_dialog_draw(struct wm_window *w) {
+    struct run_data *rd = (struct run_data *)w->widget.data;
+    if (!rd) return;
+    fb_fill_rect(w->widget.x, w->widget.y, w->widget.width, w->widget.height, 0x001a1a1a);
+    fb_draw_string(w->widget.x + 10, w->widget.y + 10, "Enter command to run:", 0x00aaaaaa, 0);
+    fb_fill_rect(w->widget.x + 10, w->widget.y + 35, w->widget.width - 20, 30, 0x00000000);
+    fb_draw_rect_outline(w->widget.x + 10, w->widget.y + 35, w->widget.width - 20, 30, 0x00444444);
+    fb_draw_string(w->widget.x + 15, w->widget.y + 44, rd->command, 0x00ffffff, 0);
+    if (timer_ticks() % 60 < 30) {
+        fb_fill_rect(w->widget.x + 15 + strlen(rd->command) * 8, w->widget.y + 42, 2, 16, 0x0000ff00);
+    }
+    fb_draw_string(w->widget.x + 10, w->widget.y + 75, "ENTER: Run | ESC: Cancel", 0x00666666, 0);
+}
+
+static void run_dialog_event(struct wm_widget *widget, struct wm_event *event) {
+    struct wm_window *w = (struct wm_window *)widget;
+    struct run_data *rd = (struct run_data *)w->widget.data;
+    if (!rd) return;
+    
+    if (wm_window_on_event(widget, event)) return;
+    
+    if (event->type == WM_EVENT_KEY) {
+        if (event->key == 27) { // ESC
+            wm_destroy_window(w);
+            kfree(rd);
+        } else if (event->key == '\n') {
+            if (strcmp(rd->command, "calc") == 0) wm_open_calculator();
+            else if (strcmp(rd->command, "term") == 0) wm_open_terminal();
+            else if (strcmp(rd->command, "files") == 0) wm_open_filemanager();
+            else if (strcmp(rd->command, "sysmon") == 0) wm_open_sysmonitor();
+            else if (strcmp(rd->command, "cal") == 0) wm_open_calendar();
+            else wm_open_terminal();
+            wm_destroy_window(w);
+            kfree(rd);
+        } else if (event->key == '\b') {
+            if (rd->cursor > 0) rd->command[--rd->cursor] = '\0';
+        } else if (event->key >= 32 && event->key <= 126 && rd->cursor < 255) {
+            rd->command[rd->cursor++] = event->key;
+            rd->command[rd->cursor] = '\0';
+        }
+    }
+}
+
+void wm_open_run_dialog(void) {
+    struct wm_window *win = wm_create_window("Run Command", (framebuffer->width - 400) / 2, 200, 400, 100);
+    if (!win) return;
+    
+    struct run_data *data = kmalloc(sizeof(struct run_data));
+    memset(data, 0, sizeof(struct run_data));
+    
+    win->widget.data = data;
+    win->draw_content = run_dialog_draw;
+    win->widget.on_event = run_dialog_event;
+}
+
 
 void wm_window_draw(struct wm_widget *widget) {
     struct wm_window *win = (struct wm_window *)widget;
@@ -1092,10 +1197,10 @@ void wm_window_draw(struct wm_widget *widget) {
     int32_t title_top = win->decorated ? wy - WM_TITLE_HEIGHT : wy;
     uint32_t total_h = win->decorated ? wh + WM_TITLE_HEIGHT : wh;
 
-    // Modern multi-layer shadow
+    // Modern alpha drop shadow
     for (int i = 8; i >= 0; i--) {
-        // uint8_t alpha = 15 - i; // TODO: Use for variable alpha shadow
-        fb_fill_rect_rounded(wx + i, title_top + i, ww, total_h, 8, 0x00000000);
+        uint8_t alpha = 10 + (8 - i) * 3; 
+        fb_fill_rect_alpha(wx + i, title_top + i, ww, total_h, 0x00000000, alpha);
     }
     
     // Window border with rounded corners (outer)
@@ -1397,10 +1502,8 @@ void wm_handle_mouse(int32_t x, int32_t y, int32_t dx, int32_t dy, uint8_t butto
     // Track if redraw is actually needed
     uint8_t needs_redraw = 0;
     
-    // Only redraw if mouse moved significantly (more than 2 pixels)
-    int32_t dx_abs = (desktop->mouse_x - old_mouse_x) < 0 ? -(desktop->mouse_x - old_mouse_x) : (desktop->mouse_x - old_mouse_x);
-    int32_t dy_abs = (desktop->mouse_y - old_mouse_y) < 0 ? -(desktop->mouse_y - old_mouse_y) : (desktop->mouse_y - old_mouse_y);
-    if (dx_abs > 2 || dy_abs > 2) {
+    // Redraw if mouse moved
+    if (dx != 0 || dy != 0) {
         needs_redraw = 1;
     }
     
@@ -1709,6 +1812,9 @@ void wm_handle_shortcuts(uint8_t key, uint8_t modifiers) {
             case 'c': case 'C': // Win+C = Calculator
                 wm_open_calculator();
                 break;
+            case 'k': case 'K': // Win+K = Calendar
+                wm_open_calendar();
+                break;
             case 'i': case 'I': // Win+I = Settings
                 wm_open_settings();
                 break;
@@ -1724,8 +1830,8 @@ void wm_handle_shortcuts(uint8_t key, uint8_t modifiers) {
                     desktop->windows[i]->minimized = 1;
                 }
                 break;
-            case 'r': case 'R': // Win+R = Run dialog (terminal for now)
-                wm_open_terminal();
+            case 'r': case 'R': // Win+R = Run dialog
+                wm_open_run_dialog();
                 break;
         }
         desktop->needs_redraw = 1;
@@ -1735,6 +1841,71 @@ void wm_handle_shortcuts(uint8_t key, uint8_t modifiers) {
     if ((modifiers & 8) && (modifiers & 16)) { // Ctrl+Alt
         if (key == 't' || key == 'T') {
             wm_open_terminal(); // Ctrl+Alt+T = Terminal
+        }
+    }
+}
+
+// Notification System
+void wm_notify(const char *text, uint32_t color) {
+    if (!text) return;
+    
+    // Find empty slot or oldest
+    int slot = -1;
+    uint64_t oldest = (uint64_t)-1;
+    int oldest_idx = 0;
+    
+    for (int i = 0; i < MAX_NOTIFICATIONS; i++) {
+        if (!notifications[i].active) {
+            slot = i;
+            break;
+        }
+        if (notifications[i].spawn_time < oldest) {
+            oldest = notifications[i].spawn_time;
+            oldest_idx = i;
+        }
+    }
+    
+    if (slot == -1) slot = oldest_idx;
+    
+    strncpy(notifications[slot].text, text, 63);
+    notifications[slot].text[63] = '\0';
+    notifications[slot].color = color;
+    notifications[slot].spawn_time = timer_ticks();
+    notifications[slot].active = 1;
+    
+    if (desktop) desktop->needs_redraw = 1;
+}
+
+void wm_draw_notifications(void) {
+    if (!framebuffer) return;
+    
+    uint64_t current_time = timer_ticks();
+    uint32_t y_offset = 10;
+    uint32_t screen_w = framebuffer->width;
+    
+    for (int i = 0; i < MAX_NOTIFICATIONS; i++) {
+        if (notifications[i].active) {
+            // Lifetime is 3 seconds (assuming 100 ticks per second)
+            if (current_time - notifications[i].spawn_time > 300) {
+                notifications[i].active = 0;
+                if (desktop) desktop->needs_redraw = 1;
+                continue;
+            }
+            
+            // Slide in animation
+            uint64_t elapsed = current_time - notifications[i].spawn_time;
+            int32_t x_offset = screen_w - 220; // Target X
+            
+            if (elapsed < 20) { // First 0.2s slide in
+                x_offset = screen_w - (elapsed * 220 / 20);
+            }
+            
+            // Draw toast
+            fb_fill_rect_rounded(x_offset, y_offset, 210, 40, 5, 0x00222222);
+            fb_draw_rect_outline(x_offset, y_offset, 210, 40, notifications[i].color);
+            fb_draw_string(x_offset + 10, y_offset + 12, notifications[i].text, 0x00ffffff, 0);
+            
+            y_offset += 50;
         }
     }
 }

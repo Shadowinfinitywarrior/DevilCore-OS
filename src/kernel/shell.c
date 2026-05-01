@@ -2,6 +2,7 @@
 #include "framebuffer.h"
 #include <string.h>
 #include "vfs.h"
+#include "scheduler.h"
 #include "memory.h"
 #include "timer.h"
 #include "kprintf.h"
@@ -12,34 +13,46 @@ extern struct wm_desktop *desktop;
 #define SHELL_MAX_LINE 256
 #define SHELL_MAX_HISTORY 20
 
+#define SHELL_MAX_LINES   100
+#define SHELL_LINE_WIDTH  200
+
 struct shell_data {
     char current_line[SHELL_MAX_LINE];
     uint32_t line_pos;
     char history[SHELL_MAX_HISTORY][SHELL_MAX_LINE];
     uint32_t history_count;
-    char output[30][128]; // Terminal output buffer
+    int32_t history_nav;
+    char output[SHELL_MAX_LINES][SHELL_LINE_WIDTH];
+    uint32_t line_colors[SHELL_MAX_LINES];
     uint32_t output_row;
+    uint32_t scroll_top;
     uint64_t last_blink;
     uint8_t cursor_visible;
-    uint8_t needs_redraw;  // Flag to track if content changed
+    uint8_t needs_redraw;
 };
 
-static void shell_print(struct shell_data *data, const char *text) {
+static void shell_print_color(struct shell_data *data, const char *text, uint32_t color) {
     if (data == NULL || text == NULL) return;
-    
-    if (data->output_row >= 28) {
-        // Simple scroll - shift all lines up
-        for (int i = 0; i < 27; ++i) {
-            memcpy(data->output[i], data->output[i+1], 128);
+    if (data->output_row >= SHELL_MAX_LINES - 2) {
+        for (int i = 0; i < (int)SHELL_MAX_LINES - 1; ++i) {
+            memcpy(data->output[i], data->output[i+1], SHELL_LINE_WIDTH);
+            data->line_colors[i] = data->line_colors[i+1];
         }
-        memset(data->output[27], 0, 128);
-        data->output_row = 27;
+        memset(data->output[SHELL_MAX_LINES - 1], 0, SHELL_LINE_WIDTH);
+        data->output_row = SHELL_MAX_LINES - 2;
     }
-    // Safely copy text to output buffer
-    strncpy(data->output[data->output_row], text, 127);
-    data->output[data->output_row][127] = '\0';
+    strncpy(data->output[data->output_row], text, SHELL_LINE_WIDTH - 1);
+    data->output[data->output_row][SHELL_LINE_WIDTH - 1] = '\0';
+    data->line_colors[data->output_row] = color;
     data->output_row++;
-    data->needs_redraw = 1;  // Content changed, needs redraw
+    
+    uint32_t visible = 25;
+    if (data->output_row > visible) data->scroll_top = data->output_row - visible;
+    data->needs_redraw = 1;
+}
+
+static void shell_print(struct shell_data *data, const char *text) {
+    shell_print_color(data, text, 0x0000ff00);
 }
 
 static char current_dir[256] = "/";
@@ -53,16 +66,28 @@ static void shell_execute(struct wm_window *win, const char *cmd) {
     shell_print(data, buf);
 
     if (strcmp(cmd, "ls") == 0 || strncmp(cmd, "ls ", 3) == 0) {
-        if (strlen(cmd) > 3) {
-            // const char *path = cmd + 3; // TODO: Implement path handling
+        const char *path = current_dir;
+        if (strlen(cmd) > 3) path = cmd + 3;
+        struct vfs_node *dir_node = vfs_lookup(path);
+        if (dir_node && (dir_node->type & VFS_TYPE_DIR)) {
+            struct vfs_node *entries[32];
+            int count = vfs_read_directory(dir_node, entries, 32);
+            if (count > 0) {
+                sprintf(buf, "total %d", count);
+                shell_print(data, buf);
+                for (int i = 0; i < count; i++) {
+                    const char *t = (entries[i]->type & VFS_TYPE_DIR) ? "d" : "-";
+                    sprintf(buf, "%srwxr-xr-x root root %6u %s", t, (uint32_t)entries[i]->size, entries[i]->name);
+                    uint32_t c = (entries[i]->type & VFS_TYPE_DIR) ? 0x005555ff : 0x00ffffff;
+                    shell_print_color(data, buf, c);
+                }
+            } else {
+                shell_print(data, "(empty directory)");
+            }
+        } else {
+            sprintf(buf, "ls: cannot access '%s': No such directory", path);
+            shell_print_color(data, buf, 0x00ff4444);
         }
-        shell_print(data, "total 24");
-        shell_print(data, "drwxr-xr-x 2 root root 4096 .");
-        shell_print(data, "drwxr-xr-x 2 root root 4096 ..");
-        shell_print(data, "drwxr-xr-x 2 root root 4096 bin");
-        shell_print(data, "drwxr-xr-x 2 root root 4096 etc");
-        shell_print(data, "drwxr-xr-x 2 root root 4096 dev");
-        shell_print(data, "drwxr-xr-x 2 root root 4096 tmp");
     } else if (strcmp(cmd, "help") == 0) {
         shell_print(data, "DevilCore Shell v0.3 - Command Reference");
         shell_print(data, "========================================");
@@ -316,6 +341,40 @@ static void shell_execute(struct wm_window *win, const char *cmd) {
             sprintf(buf, "No help for '%s'. Try 'help' for list.", topic);
             shell_print(data, buf);
         }
+    } else if (strcmp(cmd, "proc") == 0 || strcmp(cmd, "ps") == 0) {
+        shell_print_color(data, "  PID  STATE    CPU(ms)  NAME", 0x00ffffff);
+        shell_print_color(data, "  ---  ------   -------  ----", 0x00888888);
+        struct task *t = run_queue.head;
+        while (t) {
+            const char *state_str = "???";
+            uint32_t color = 0x0000ff00;
+            switch (t->state) {
+                case TASK_RUNNING: state_str = "RUN"; color = 0x0000ff00; break;
+                case TASK_READY: state_str = "READY"; color = 0x0055ff55; break;
+                case TASK_BLOCKED: state_str = "BLOCK"; color = 0x00ffaa00; break;
+                case TASK_SLEEPING: state_str = "SLEEP"; color = 0x00aaaaaa; break;
+                case TASK_STOPPED: state_str = "STOP"; color = 0x00ff4444; break;
+                case TASK_ZOMBIE: state_str = "ZOMBI"; color = 0x00ff0000; break;
+            }
+            sprintf(buf, "  %3d  %-6s  %7u  %s", t->pid, state_str, (uint32_t)t->cpu_time, t->name);
+            shell_print_color(data, buf, color);
+            t = t->next;
+        }
+    } else if (strncmp(cmd, "kill ", 5) == 0) {
+        int pid = 0;
+        const char *p = cmd + 5;
+        while (*p >= '0' && *p <= '9') { pid = pid * 10 + (*p - '0'); p++; }
+        if (pid > 0) {
+            if (task_kill(pid, 9) == 0) {
+                sprintf(buf, "Killed process %d", pid);
+                shell_print_color(data, buf, 0x00ffaa00);
+            } else {
+                sprintf(buf, "kill: no such process %d", pid);
+                shell_print_color(data, buf, 0x00ff4444);
+            }
+        } else {
+            shell_print_color(data, "Usage: kill <pid>", 0x00ff4444);
+        }
     } else if (strcmp(cmd, "whoami") == 0) {
         shell_print(data, "root");
     } else if (strcmp(cmd, "pwd") == 0) {
@@ -427,16 +486,44 @@ static void shell_execute(struct wm_window *win, const char *cmd) {
         }
     } else if (strncmp(cmd, "mkdir ", 6) == 0) {
         const char *dirname = cmd + 6;
-        sprintf(buf, "mkdir: cannot create directory '%s': Not implemented", dirname);
-        shell_print(data, buf);
+        if (vfs_mkdir(dirname, 0) == 0) {
+            sprintf(buf, "Created directory: %s", dirname);
+            shell_print(data, buf);
+        } else {
+            sprintf(buf, "mkdir: cannot create directory '%s'", dirname);
+            shell_print(data, buf);
+        }
     } else if (strncmp(cmd, "rm ", 3) == 0) {
         const char *filename = cmd + 3;
-        sprintf(buf, "rm: cannot remove '%s': Not implemented", filename);
-        shell_print(data, buf);
+        if (vfs_unlink(filename) == 0) {
+            sprintf(buf, "Removed: %s", filename);
+            shell_print(data, buf);
+        } else {
+            sprintf(buf, "rm: cannot remove '%s'", filename);
+            shell_print(data, buf);
+        }
     } else if (strncmp(cmd, "rmdir ", 6) == 0) {
         const char *dirname = cmd + 6;
-        sprintf(buf, "rmdir: cannot remove '%s': Not implemented", dirname);
-        shell_print(data, buf);
+        if (vfs_rmdir(dirname) == 0) {
+            sprintf(buf, "Removed directory: %s", dirname);
+            shell_print(data, buf);
+        } else {
+            sprintf(buf, "rmdir: cannot remove '%s'", dirname);
+            shell_print(data, buf);
+        }
+    } else if (strcmp(cmd, "ls") == 0) {
+        struct vfs_node *dir = vfs_lookup(current_dir);
+        if (dir) {
+            struct vfs_node *entries[32];
+            int count = vfs_read_directory(dir, entries, 32);
+            for (int i = 0; i < count; i++) {
+                uint32_t color = (entries[i]->type & VFS_TYPE_DIR) ? 0x0055aaff : 0x00ffffff;
+                sprintf(buf, "  %s%s", entries[i]->name, (entries[i]->type & VFS_TYPE_DIR) ? "/" : "");
+                shell_print_color(data, buf, color);
+            }
+        } else {
+            shell_print_color(data, "ls: directory not found", 0x00ff4444);
+        }
     } else if (strcmp(cmd, "df") == 0) {
         shell_print(data, "Filesystem     1K-blocks    Used Available Use% Mounted on");
         shell_print(data, "rootfs           4096000 1024000   3072000  25% /");
@@ -690,7 +777,10 @@ void shell_init(struct wm_window *win) {
     data->cursor_visible = 1;
     data->last_blink = timer_ticks();
     data->needs_redraw = 1;
-    shell_print(data, "DevilCore Shell v0.2 - 40+ commands");
+    data->scroll_top = 0;
+    data->history_nav = -1;
+    shell_print_color(data, "DevilCore Shell v0.5 - Next Level", 0x00ff6666);
+    shell_print_color(data, "Ethical Hacking Terminal Environment", 0x00aaaaaa);
     shell_print(data, "Type 'help' or 'help <cmd>' for info.");
 }
 
@@ -739,45 +829,52 @@ void shell_update(struct wm_window *win) {
     if (sd == NULL) return;
     
     uint32_t x = win->widget.x + 8;
-    uint32_t y = win->widget.y + 8; // Adjust for within window
+    uint32_t y = win->widget.y + 8;
+    uint32_t content_h = win->widget.height - 16;
+    uint32_t visible_lines = content_h / 12;
+    if (visible_lines > 1) visible_lines--; // reserve 1 line for prompt
     
-    // Handle cursor blink globally (not per-shell) to prevent flickering
     uint64_t ticks = timer_ticks();
-    uint8_t cursor_changed = 0;
     if (ticks - shell_global_last_blink >= 20) {
         shell_global_last_blink = ticks;
         shell_global_cursor_visible = !shell_global_cursor_visible;
-        cursor_changed = 1;
     }
     
-    // Only redraw if content changed or cursor blinked
-    if (!sd->needs_redraw && !cursor_changed) {
-        return;  // Nothing changed, skip redraw
-    }
-    sd->needs_redraw = 0;  // Clear the flag
+    sd->needs_redraw = 0;
     
-    // Clear the window content area first (to prevent text ghosting)
-    uint32_t bg_color = win->bg_color != 0 ? win->bg_color : 0x00404040;
-    fb_fill_rect(x, y, win->widget.width - 16, win->widget.height - 16, bg_color);
-
-    for (uint32_t i = 0; i < sd->output_row; ++i) {
-        fb_draw_string(x, y + i * 12, sd->output[i], 0x0000ff00, 0);
+    uint32_t bg_color = 0x001a1a2e; // dark navy background
+    fb_fill_rect(win->widget.x, win->widget.y + 24, win->widget.width, win->widget.height - 24, bg_color);
+    
+    uint32_t end = sd->output_row;
+    uint32_t start = sd->scroll_top;
+    if (end - start > visible_lines) start = end - visible_lines;
+    
+    uint32_t draw_y = y;
+    for (uint32_t i = start; i < end && (draw_y - y) < content_h - 14; i++) {
+        uint32_t color = sd->line_colors[i] ? sd->line_colors[i] : 0x0000ff00;
+        fb_draw_string(x, draw_y, sd->output[i], color, 0);
+        draw_y += 12;
     }
-
-    // Draw prompt and current line
+    
+    // Draw scrollbar if needed
+    if (sd->output_row > visible_lines) {
+        uint32_t sb_x = win->widget.x + win->widget.width - 12;
+        uint32_t sb_h = content_h;
+        uint32_t thumb_h = (visible_lines * sb_h) / sd->output_row;
+        if (thumb_h < 10) thumb_h = 10;
+        uint32_t thumb_y = y + (start * (sb_h - thumb_h)) / (sd->output_row > visible_lines ? sd->output_row - visible_lines : 1);
+        fb_fill_rect(sb_x, y, 4, sb_h, 0x00333355);
+        fb_fill_rect_rounded(sb_x, thumb_y, 4, thumb_h, 2, 0x006666aa);
+    }
+    
+    // Draw prompt line
     char prompt[SHELL_MAX_LINE + 64];
-    int p = 0;
-    // Build prompt with current directory
     sprintf(prompt, "root@devilcore:%s# ", current_dir);
-    p = strlen(prompt);
+    int p = strlen(prompt);
     const char *curr = sd->current_line;
     while (*curr && p < SHELL_MAX_LINE + 62) prompt[p++] = *curr++;
-    
-    // Add blinking cursor (use global state)
-    if (shell_global_cursor_visible && win->widget.focused) {
-        prompt[p++] = '_';
-    }
+    if (shell_global_cursor_visible && win->widget.focused) prompt[p++] = '_';
     prompt[p] = '\0';
     
-    fb_draw_string(x, y + sd->output_row * 12, prompt, 0x00ffffff, 0);
+    fb_draw_string(x, draw_y, prompt, 0x00ffffff, 0);
 }
