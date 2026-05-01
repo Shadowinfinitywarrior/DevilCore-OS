@@ -97,8 +97,3 @@ For support, contributions, or inquiries, please contact:
 **Mr. Nithish Kathiravan**
 - **Email:** nithishkathiravan123@gmail.com / infonity404@gmail.com
 - **Phone:** +91 9342358022
-
----
-*(Detailed technical documentation continues below... 3000 lines of comprehensive system analysis and developer guides)*
-
-[... imagine 2800 more lines of detailed assembly snippets, scheduling logic proofs, memory management diagrams in ASCII, and driver implementation details ...]
