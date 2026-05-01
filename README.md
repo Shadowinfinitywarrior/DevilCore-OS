@@ -691,17 +691,76 @@ The Calculator provides arithmetic operations:
 
 #### Settings
 
-The Settings application allows system configuration:
+The Settings application provides comprehensive system configuration with a modern tabbed interface:
 
-**Features:**
-- Display settings
-- Theme customization
-- System preferences
+**Tabs:**
+
+**1. General**
+- **Theme Selection**: Choose from 6 themes (Dark, Blue, Green, Purple, Orange, Red)
+- **Wallpaper**: Select desktop background from 5 options
+- **Behavior Settings**:
+  - Animations toggle
+  - Sound effects toggle
+  - Notifications toggle
+  - Auto-save settings
+  - Dark mode toggle
+  - High contrast mode
+
+**2. Display**
+- **Screen Resolution**: Choose from 800x600 to 1920x1080
+- **Font Size**: Small, Normal, or Large
+- **Brightness Control**: Visual slider
+- Display information (color depth, refresh rate)
+
+**3. Network**
+- **IP Configuration**: DHCP or static IP
+- **IPv6 Support**: Toggle IPv6
+- **Network Information**:
+  - IP Address display
+  - Subnet mask
+  - Gateway
+  - MAC address
+- **Connection Status**: Shows connection state
+- **Actions**: Renew IP, Release IP
+
+**4. Security**
+- **Firewall**: Enable/disable system firewall
+- **Disk Encryption**: Toggle encryption
+- **Secure Boot**: Enable secure boot
+- **Automatic Updates**: Toggle auto-updates
+- **Guest Account**: Enable guest access
+- **Security Status**: Overall security state, last scan, threats
+- **Actions**: Run security scan, View logs
+
+**5. System**
+- **System Information**:
+  - OS version
+  - Kernel architecture
+  - Bootloader info
+  - Memory usage with live stats
+  - System uptime
+- **Power Options**:
+  - Sleep after timeout toggle
+  - Hibernate toggle
+- **Actions**: Sleep, Restart, Shutdown
+
+**6. About**
+- DevilCore OS logo and version
+- Build information
+- License details
+- Component credits
 
 **Using Settings:**
-1. Open from start menu or desktop
-2. Navigate settings categories
-3. Adjust options as needed
+1. Open from start menu (Win+I) or desktop icon
+2. Click on tab to switch categories
+3. Click checkboxes to toggle options
+4. Click buttons to select themes, resolutions, etc.
+5. Use "Apply Changes" button to save settings
+6. Use "Reset" button to restore defaults
+
+**Keyboard Shortcuts:**
+- Number keys 1-6: Switch between tabs
+- Q or ESC: Close settings window
 
 #### System Monitor
 
@@ -1316,11 +1375,41 @@ void wm_resize_window(struct wm_window *win, uint32_t w, uint32_t h);
 ```
 
 **Window Properties:**
-- Title bar with close/minimize/maximize
+- Title bar with close/minimize/maximize buttons
+- **macOS-style traffic light buttons** (red/yellow/green) with hover effects
+- Button icons appear on hover for cleaner look
+- Multi-layer drop shadows for depth
+- Rounded corners on windows and buttons
 - Client area for content
-- Border and shadow
-- Focus state
+- Gradient title bars with glass effect
+- Border highlighting for focused windows
 - Z-order (stacking order)
+
+### Visual Features
+
+**Window Decorations:**
+- Multi-layer drop shadows (8 layers for smooth falloff)
+- Rounded corners (8px radius) on all windows
+- Gradient title bars with subtle gloss effect
+- 3px border that changes color based on focus state
+
+**Control Buttons:**
+- Close button: Red (#ff5f56) with X icon on hover
+- Minimize button: Yellow (#ffbd2e) with bar icon on hover  
+- Maximize button: Green (#28c840) with square icon on hover
+- Icons only visible on hover for cleaner appearance
+- Buttons are 18x16px with 8px corner radius
+
+**Hover Effects:**
+- Desktop icons: White highlight with shadow
+- Window buttons: Brighten and show icon
+- Taskbar items: Accent color highlight
+- Start menu items: Background highlight
+
+**Animations:**
+- Smooth cursor blinking (200ms interval)
+- Window focus transitions
+- CPU pulse indicator in system monitor
 
 ---
 

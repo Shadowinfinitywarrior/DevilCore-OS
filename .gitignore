@@ -1,21 +1,3 @@
-# Build artifacts
-build/
-dist/
-iso_root/
-iso/
-
-# Generated files
-*.o
-*.elf
-*.iso
-*.img
-*.bin
-
-# Debug logs
-*.log
-qemu_debug.log
-serial*.log
-
 # Temporary files
 tmp_*
 *.tmp

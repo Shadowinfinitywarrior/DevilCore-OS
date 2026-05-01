@@ -1117,32 +1117,50 @@ void wm_window_draw(struct wm_widget *widget) {
         fb_draw_string(wx + 12, title_top + 5, win->title, 0x00000000, 0); // Shadow
         fb_draw_string(wx + 11, title_top + 4, win->title, current_theme.fg_color, 0); // Main
         
-        // Modern window control buttons (right side)
+        // Modern window control buttons (right side) - macOS style with always-visible colors
         int32_t btn_y = title_top + 5;
         int32_t btn_close_x = wx + ww - 28;
         int32_t btn_max_x = wx + ww - 50;
         int32_t btn_min_x = wx + ww - 72;
         
-        // Minimize button (yellow when hovered)
-        uint32_t min_color = (hovered_button == 0) ? 0x00ffaa00 : 0x00555555;
-        fb_fill_rect_rounded(btn_min_x, btn_y, 18, 14, 3, min_color);
-        fb_fill_rect(btn_min_x + 4, btn_y + 10, 10, 2, 0x00ffffff); // Minimize line
+        // Base colors (traffic light style - always visible)
+        uint32_t min_base = 0x00ffbd2e;    // Yellow
+        uint32_t max_base = 0x0028c840;    // Green
+        uint32_t close_base = 0x00ff5f56;  // Red
         
-        // Maximize button (green when hovered)
-        uint32_t max_color = (hovered_button == 1) ? 0x0000aa00 : 0x00555555;
-        fb_fill_rect_rounded(btn_max_x, btn_y, 18, 14, 3, max_color);
-        if (win->maximized) {
-            fb_draw_rect_outline(btn_max_x + 5, btn_y + 4, 8, 6, 0x00ffffff);
-        } else {
-            fb_fill_rect(btn_max_x + 5, btn_y + 3, 8, 8, 0x00ffffff);
+        // Dim colors when not hovered
+        uint32_t min_dim = 0x00aa7d1e;
+        uint32_t max_dim = 0x001a8028;
+        uint32_t close_dim = 0x00aa3a32;
+        
+        // Minimize button (yellow)
+        uint32_t min_color = (hovered_button == 0) ? min_base : min_dim;
+        fb_fill_rect_rounded(btn_min_x, btn_y, 18, 16, 8, min_color);
+        // Show icon only on hover
+        if (hovered_button == 0) {
+            fb_fill_rect(btn_min_x + 5, btn_y + 7, 8, 2, 0x008b4513); // Darker bar
         }
         
-        // Close button (red when hovered)
-        uint32_t close_color = (hovered_button == 2) ? 0x00cc0000 : 0x00555555;
-        fb_fill_rect_rounded(btn_close_x, btn_y, 18, 14, 3, close_color);
-        // X symbol
-        fb_draw_line(btn_close_x + 5, btn_y + 3, btn_close_x + 13, btn_y + 11, 0x00ffffff);
-        fb_draw_line(btn_close_x + 13, btn_y + 3, btn_close_x + 5, btn_y + 11, 0x00ffffff);
+        // Maximize button (green)
+        uint32_t max_color = (hovered_button == 1) ? max_base : max_dim;
+        fb_fill_rect_rounded(btn_max_x, btn_y, 18, 16, 8, max_color);
+        // Show icon only on hover
+        if (hovered_button == 1) {
+            if (win->maximized) {
+                fb_draw_rect_outline(btn_max_x + 5, btn_y + 5, 8, 6, 0x00004400);
+            } else {
+                fb_fill_rect(btn_max_x + 5, btn_y + 4, 8, 8, 0x00004400);
+            }
+        }
+        
+        // Close button (red)
+        uint32_t close_color = (hovered_button == 2) ? close_base : close_dim;
+        fb_fill_rect_rounded(btn_close_x, btn_y, 18, 16, 8, close_color);
+        // Show X only on hover
+        if (hovered_button == 2) {
+            fb_draw_line(btn_close_x + 5, btn_y + 4, btn_close_x + 13, btn_y + 12, 0x00440000);
+            fb_draw_line(btn_close_x + 13, btn_y + 4, btn_close_x + 5, btn_y + 12, 0x00440000);
+        }
     }
     
     // Window content area with rounded bottom corners
@@ -1182,8 +1200,8 @@ int wm_window_on_event(struct wm_widget *widget, struct wm_event *event) {
         if (win->decorated && event->y < 0 && event->y >= -(int32_t)WM_TITLE_HEIGHT) {
             uint32_t ww = win->widget.width;
             
-            // Minimize button (leftmost: width - 60)
-            if (event->x >= (int32_t)(ww - 60) && event->x < (int32_t)(ww - 44)) {
+            // Minimize button (leftmost of the three: width - 72 to width - 54)
+            if (event->x >= (int32_t)(ww - 72) && event->x < (int32_t)(ww - 54)) {
                 if (win->minimized) {
                     // Restore window
                     win->minimized = 0;
@@ -1197,8 +1215,8 @@ int wm_window_on_event(struct wm_widget *widget, struct wm_event *event) {
                 wm_draw_desktop();
                 return 1;
             }
-            // Maximize/Restore button (middle: width - 40)
-            if (event->x >= (int32_t)(ww - 40) && event->x < (int32_t)(ww - 24)) {
+            // Maximize/Restore button (middle: width - 50 to width - 32)
+            if (event->x >= (int32_t)(ww - 50) && event->x < (int32_t)(ww - 32)) {
                 if (win->maximized) {
                     // Restore window size and position
                     win->widget.x = win->restore_x;
@@ -1222,8 +1240,8 @@ int wm_window_on_event(struct wm_widget *widget, struct wm_event *event) {
                 wm_draw_desktop();
                 return 1;
             }
-            // Close button (rightmost: width - 20)
-            if (event->x >= (int32_t)(ww - 20)) {
+            // Close button (rightmost: width - 28 to width - 10)
+            if (event->x >= (int32_t)(ww - 28) && event->x < (int32_t)(ww - 10)) {
                 wm_destroy_window(win);
                 return 1;
             }
@@ -1418,6 +1436,57 @@ void wm_handle_mouse(int32_t x, int32_t y, int32_t dx, int32_t dy, uint8_t butto
     // or if we have a hover state change (handled in event processing)
     if ((dx != 0 || dy != 0) && (buttons != 0)) {
         needs_redraw = 1;
+    }
+    
+    // Check for window button hover effects
+    if (desktop->screen == WM_SCREEN_DESKTOP && desktop->window_count > 0) {
+        int old_hovered = hovered_button;
+        hovered_button = -1; // Reset hover state
+        
+        // Check if mouse is over any window's title bar buttons
+        for (uint32_t i = 0; i < desktop->window_count; i++) {
+            struct wm_window *win = desktop->windows[i];
+            if (win->minimized || !win->widget.visible || !win->decorated) continue;
+            
+            int32_t wx = win->widget.x;
+            int32_t wy = win->widget.y;
+            int32_t ww = win->widget.width;
+            int32_t title_top = wy - WM_TITLE_HEIGHT;
+            
+            // Check if mouse is in title bar area (y range)
+            if (desktop->mouse_y >= title_top && desktop->mouse_y < title_top + 24) {
+                // Check if mouse is in button area (right side of title bar)
+                if (desktop->mouse_x >= wx + ww - 72 && desktop->mouse_x < wx + ww - 10) {
+                    // Mouse is over buttons - determine which one
+                    int32_t rel_x = desktop->mouse_x - (wx + ww - 72);
+                    
+                    // Button order: minimize (0-18), maximize (18-36), close (36-54)
+                    // But actual positions are: min at 72, max at 50, close at 28 from right edge
+                    // So relative to (ww - 72): min=0-18, max=22-40, close=44-62
+                    int32_t btn_min_x = wx + ww - 72;
+                    int32_t btn_max_x = wx + ww - 50;
+                    int32_t btn_close_x = wx + ww - 28;
+                    
+                    if (desktop->mouse_x >= btn_min_x && desktop->mouse_x < btn_min_x + 18) {
+                        hovered_button = 0; // Minimize
+                    } else if (desktop->mouse_x >= btn_max_x && desktop->mouse_x < btn_max_x + 18) {
+                        hovered_button = 1; // Maximize
+                    } else if (desktop->mouse_x >= btn_close_x && desktop->mouse_x < btn_close_x + 18) {
+                        hovered_button = 2; // Close
+                    }
+                    
+                    if (hovered_button != old_hovered) {
+                        needs_redraw = 1;
+                    }
+                    break; // Only check topmost visible window
+                }
+            }
+        }
+        
+        // If hover state changed to none, redraw
+        if (old_hovered != -1 && hovered_button == -1) {
+            needs_redraw = 1;
+        }
     }
     
     if (needs_redraw) {
