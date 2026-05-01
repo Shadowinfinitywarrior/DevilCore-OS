@@ -144,6 +144,7 @@ static int rtl8139_open(struct net_device *dev) {
     return 0;
 }
 
+static int rtl8139_close(struct net_device *dev) __attribute__((unused));
 static int rtl8139_close(struct net_device *dev) {
     struct rtl8139_private *priv = (struct rtl8139_private *)dev;
     

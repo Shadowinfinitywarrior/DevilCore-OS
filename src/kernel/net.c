@@ -93,6 +93,7 @@ uint32_t net_parse_ipv4(const char *str) {
     return addr;
 }
 
+static uint16_t net_checksum_ipv4(struct ipv4_header *header, size_t length) __attribute__((unused));
 static uint16_t net_checksum_ipv4(struct ipv4_header *header, size_t length) {
     uint32_t sum = 0;
     const uint8_t *ptr = (const uint8_t *)header;

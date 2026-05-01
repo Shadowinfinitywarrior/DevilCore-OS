@@ -190,6 +190,7 @@ int ipc_channel_receive(ipc_channel_t *ch, message_t *msg, bool from_server) {
 
 // Basic IPC operations
 int ipc_send(uint32_t pid, message_t *msg, bool blocking) {
+    (void)blocking;
     if (!msg) return -1;
     
     // For now, just print (would need proper PID-based routing)
@@ -198,6 +199,7 @@ int ipc_send(uint32_t pid, message_t *msg, bool blocking) {
 }
 
 int ipc_receive(message_t *msg, bool blocking) {
+    (void)blocking;
     if (!msg) return -1;
     
     // Simplified - would need message queue per process

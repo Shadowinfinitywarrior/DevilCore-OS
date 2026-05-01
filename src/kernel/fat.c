@@ -60,6 +60,7 @@ static uint32_t fat_cluster_to_lba(struct fat_private *fat, uint32_t cluster) {
     return fat->data_start + ((cluster - 2) * fat->bytes_per_cluster);
 }
 
+static uint32_t fat_alloc_cluster(struct fat_private *fat) __attribute__((unused));
 static uint32_t fat_alloc_cluster(struct fat_private *fat) {
     uint32_t cluster = fat->next_free;
     
@@ -76,6 +77,7 @@ static uint32_t fat_alloc_cluster(struct fat_private *fat) {
     return 0xffffffff;
 }
 
+static void fat_free_cluster_chain(struct fat_private *fat, uint32_t start_cluster) __attribute__((unused));
 static void fat_free_cluster_chain(struct fat_private *fat, uint32_t start_cluster) {
     uint32_t cluster = start_cluster;
     

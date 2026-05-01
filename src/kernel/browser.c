@@ -162,6 +162,7 @@ void browser_draw_address_bar(struct wm_window *win, struct browser_data *data) 
 }
 
 void browser_draw_toolbar(struct wm_window *win, struct browser_data *data) {
+    (void)data;
     int32_t x = win->widget.x + 10;
     int32_t y = win->widget.y + 112;
     
@@ -223,7 +224,7 @@ void browser_draw_content(struct wm_window *win, struct browser_data *data) {
     
     // Draw content lines with better spacing
     int32_t line_y = y + 65;
-    for (uint32_t i = data->scroll_offset; i < data->content_lines && line_y < y + h - 20; i++) {
+    for (uint32_t i = data->scroll_offset; i < data->content_lines && line_y < (int32_t)(y + h - 20); i++) {
         // Highlight headers (lines starting with ===)
         if (strncmp(data->content[i], "===", 3) == 0) {
             fb_draw_string(x + 15, line_y, data->content[i], BROWSER_ACCENT, 1);
@@ -381,33 +382,33 @@ void browser_on_event(struct wm_widget *widget, struct wm_event *event) {
         int32_t rel_x = event->x - win->widget.x;
         
         // Check toolbar buttons
-        if (rel_y >= 112 && rel_y <= 144) {
-            int32_t btn_x = 10;
-            uint32_t btn_w = 36;
-            uint32_t btn_spacing = 8;
+         if (rel_y >= 112 && rel_y <= 144) {
+             int32_t btn_x = 10;
+             int32_t btn_w = 36;
+             int32_t btn_spacing = 8;
             
-            if (rel_x >= btn_x && rel_x <= btn_x + btn_w) {
+            if ((int32_t)rel_x >= btn_x && (int32_t)rel_x <= btn_x + btn_w) {
                 // Back
                 if (data->history_count > 1) {
                     data->history_count--;
                     browser_navigate(data, data->history[data->history_count - 1]);
                 }
-            } else if (rel_x >= btn_x + btn_w + btn_spacing && rel_x <= btn_x + (btn_w + btn_spacing) * 2) {
+            } else if ((int32_t)rel_x >= btn_x + btn_w + btn_spacing && (int32_t)rel_x <= btn_x + (btn_w + btn_spacing) * 2) {
                 // Forward (placeholder)
-            } else if (rel_x >= btn_x + (btn_w + btn_spacing) * 2 && rel_x <= btn_x + (btn_w + btn_spacing) * 3) {
+            } else if ((int32_t)rel_x >= btn_x + (btn_w + btn_spacing) * 2 && (int32_t)rel_x <= btn_x + (btn_w + btn_spacing) * 3) {
                 // Home
                 browser_navigate(data, "devilcore://welcome");
             }
         }
         
-        // Check tabs
-        if (rel_y >= 30 && rel_y <= 62) {
-            uint32_t tab_width = 140;
-            uint32_t tab_idx = (rel_x - 5) / (tab_width + 5);
+         // Check tabs
+         if (rel_y >= 30 && rel_y <= 62) {
+             int32_t tab_width = 140;
+             uint32_t tab_idx = (rel_x - 5) / (tab_width + 5);
             if (tab_idx < data->tab_count) {
-                // Check if close button clicked
-                uint32_t close_x = 5 + tab_idx * (tab_width + 5) + tab_width - 22;
-                if (rel_x >= close_x && rel_x <= close_x + 16) {
+                 // Check if close button clicked
+                 int32_t close_x = 5 + tab_idx * (tab_width + 5) + tab_width - 22;
+                 if ((int32_t)rel_x >= close_x && (int32_t)rel_x <= close_x + 16) {
                     // Close tab
                     if (data->tab_count > 1) {
                         for (uint32_t i = tab_idx; i < data->tab_count - 1; i++) {
@@ -422,7 +423,7 @@ void browser_on_event(struct wm_widget *widget, struct wm_event *event) {
                     // Switch tab
                     data->active_tab = tab_idx;
                 }
-            } else if (tab_idx == data->tab_count && rel_x <= 5 + data->tab_count * (tab_width + 5) + 32) {
+             } else if (tab_idx == data->tab_count && (int32_t)rel_x <= 5 + (int32_t)(data->tab_count * (tab_width + 5)) + 32) {
                 // New tab
                 if (data->tab_count < BROWSER_MAX_TABS) {
                     strcpy(data->tabs[data->tab_count].url, "devilcore://welcome");

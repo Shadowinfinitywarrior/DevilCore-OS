@@ -316,6 +316,8 @@ static uint64_t user_heap_base = 0x40000000; // Example user heap base
 static uint64_t user_heap_end = 0x40000000;
 
 void *mmap_user(uint64_t addr, uint64_t length, uint32_t prot, uint32_t flags) {
+    (void)prot;
+    (void)flags;
     if (length == 0) return NULL;
     
     uint64_t pages = align_up_u64(length, PAGE_SIZE) / PAGE_SIZE;

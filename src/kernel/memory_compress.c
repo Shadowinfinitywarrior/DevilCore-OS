@@ -209,7 +209,7 @@ int32_t memory_compress_page(uint32_t page_addr) {
     // Try to compress
     uint8_t temp_buffer[4096 * 2]; // Compression might expand slightly
     uint32_t compressed_size = memory_compress(
-        (uint8_t *)page_addr, page_size,
+        (uint8_t *)(uintptr_t)page_addr, page_size,
         temp_buffer, sizeof(temp_buffer)
     );
     
@@ -232,7 +232,7 @@ int32_t memory_compress_page(uint32_t page_addr) {
     block->last_access = timer_ticks();
     
     // Zero out the original page (mark as swapped)
-    memset((void *)page_addr, 0, page_size);
+    memset((void *)(uintptr_t)page_addr, 0, page_size);
     
     return 0;
 }
@@ -246,12 +246,12 @@ int32_t memory_decompress_page(uint32_t original_addr) {
         if (compressed_blocks[i].original_addr == original_addr) {
             compressed_block_t *block = &compressed_blocks[i];
             
-            int32_t result = memory_decompress(
-                &compressed_pool[block->compressed_addr],
-                block->compressed_size,
-                (uint8_t *)original_addr,
-                block->original_size
-            );
+        int32_t result = memory_decompress(
+            &compressed_pool[block->compressed_addr],
+            block->compressed_size,
+            (uint8_t *)(uintptr_t)original_addr,
+            block->original_size
+        );
             
             if (result == 0) {
                 // Remove from compressed pool (simple approach: mark as free)

@@ -25,6 +25,7 @@ static slab_cache_t *cache_list = NULL;
 
 // Calculate objects per slab
 static uint32_t calc_objects_per_slab(uint32_t obj_size, uint32_t align) {
+    (void)align;
     // Account for slab header and bitmap
     uint32_t overhead = sizeof(slab_t) + ((PAGE_SIZE / obj_size) + 7) / 8;
     uint32_t available = PAGE_SIZE - overhead;
@@ -265,8 +266,8 @@ void slab_free(slab_cache_t *cache, void *obj) {
     
     // Check partial slabs
     for (slab_t *s = cache->partial; s; s = s->next) {
-        if (obj >= s->memory && 
-            obj < (char*)s->memory + cache->objects_per_slab * cache->object_size) {
+        if ((uintptr_t)obj >= (uintptr_t)s->memory && 
+            (uintptr_t)obj < (uintptr_t)s->memory + cache->objects_per_slab * cache->object_size) {
             slab = s;
             break;
         }
@@ -275,8 +276,8 @@ void slab_free(slab_cache_t *cache, void *obj) {
     // Check full slabs
     if (!slab) {
         for (slab_t *s = cache->full; s; s = s->next) {
-            if (obj >= s->memory && 
-                obj < (char*)s->memory + cache->objects_per_slab * cache->object_size) {
+        if ((uintptr_t)obj >= (uintptr_t)s->memory && 
+            (uintptr_t)obj < (uintptr_t)s->memory + cache->objects_per_slab * cache->object_size) {
                 slab = s;
                 break;
             }

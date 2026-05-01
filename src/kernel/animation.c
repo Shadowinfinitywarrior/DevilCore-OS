@@ -248,6 +248,7 @@ void window_animate_open(widget_t *win) {
 }
 
 void window_animate_close(widget_t *win, void (*done)(void*), void *data) {
+    (void)done;
     if (!win) return;
     
     animation_t *anim = animate_float(&win->surface->opacity, 0.0f, 100, EASING_EASE_IN);

@@ -296,7 +296,7 @@ void wm_icon_draw(struct wm_widget *widget) {
 
     // Icon background plate (subtle gradient effect)
     uint32_t plate_color = is_hovered ? 0x00ffffff : 0x00f0f0f0;
-    uint8_t plate_alpha = is_hovered ? 60 : 20;
+    // uint8_t plate_alpha = is_hovered ? 60 : 20; // TODO: Use for alpha blending
     fb_fill_rect_rounded(x + 8, y + 8, 32, 32, 6, plate_color);
 
     // Get the proper icon data using icon_name (not label)
@@ -1094,7 +1094,7 @@ void wm_window_draw(struct wm_widget *widget) {
 
     // Modern multi-layer shadow
     for (int i = 8; i >= 0; i--) {
-        uint8_t alpha = 15 - i;
+        // uint8_t alpha = 15 - i; // TODO: Use for variable alpha shadow
         fb_fill_rect_rounded(wx + i, title_top + i, ww, total_h, 8, 0x00000000);
     }
     
@@ -1105,8 +1105,8 @@ void wm_window_draw(struct wm_widget *widget) {
     // Title bar with glass effect (gradient)
     if (win->decorated) {
         uint32_t title_color1 = win->widget.focused ? current_theme.accent_color : 0x00303030;
-        uint32_t title_color2 = win->widget.focused ? 
-            fb_blend_colors(current_theme.accent_color, 0x000000, 50) : 0x00252525;
+
+        //     fb_blend_colors(current_theme.accent_color, 0x000000, 50) : 0x00252525; // TODO: Use for gradient
         
         // Title bar background with rounded top
         fb_fill_rect_rounded(wx, title_top, ww, WM_TITLE_HEIGHT, 8, title_color1);
@@ -1458,7 +1458,7 @@ void wm_handle_mouse(int32_t x, int32_t y, int32_t dx, int32_t dy, uint8_t butto
                 // Check if mouse is in button area (right side of title bar)
                 if (desktop->mouse_x >= wx + ww - 72 && desktop->mouse_x < wx + ww - 10) {
                     // Mouse is over buttons - determine which one
-                    int32_t rel_x = desktop->mouse_x - (wx + ww - 72);
+                    // int32_t rel_x = desktop->mouse_x - (wx + ww - 72); // TODO: Use for precise button detection
                     
                     // Button order: minimize (0-18), maximize (18-36), close (36-54)
                     // But actual positions are: min at 72, max at 50, close at 28 from right edge

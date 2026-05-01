@@ -24,7 +24,7 @@ CFLAGS := -std=c17 -Os -Wall -Wextra -ffreestanding -fno-stack-protector \
 	-fno-pic -fno-asynchronous-unwind-tables -fno-unwind-tables \
 	-m64 -mcmodel=kernel -mno-red-zone -mno-mmx -mno-sse -mno-sse2 \
 	-ffunction-sections -fdata-sections \
-	-D_FORTIFY_SOURCE=0 -I./src/kernel
+	-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -I./src/kernel
 LDFLAGS := -m elf_x86_64 -T linker.ld -z max-page-size=0x1000 --gc-sections
 NASMFLAGS := -f elf64
 STRIP := $(TOOLCHAIN_PREFIX)strip

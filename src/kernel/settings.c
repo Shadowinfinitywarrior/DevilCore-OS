@@ -23,7 +23,6 @@ static uint8_t firewall_enabled = 1;
 static uint8_t encryption_enabled = 0;
 static uint8_t secure_boot = 0;
 static uint8_t dhcp_enabled = 1;
-static uint8_t show_seconds = 0;
 static uint8_t dark_mode = 1;
 static uint8_t high_contrast = 0;
 

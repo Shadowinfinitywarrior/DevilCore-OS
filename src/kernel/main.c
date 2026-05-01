@@ -376,4 +376,10 @@ void kernel_main(void) {
     serial_write_string("Calling scheduler_start...\n");
 
     scheduler_start();
+    __builtin_unreachable();
+
+    // Should never reach here
+    for (;;) {
+        __asm__ volatile("hlt");
+    }
 }

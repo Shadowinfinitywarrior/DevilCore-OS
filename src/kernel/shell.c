@@ -53,7 +53,9 @@ static void shell_execute(struct wm_window *win, const char *cmd) {
     shell_print(data, buf);
 
     if (strcmp(cmd, "ls") == 0 || strncmp(cmd, "ls ", 3) == 0) {
-        const char *path = (strlen(cmd) > 3) ? cmd + 3 : current_dir;
+        if (strlen(cmd) > 3) {
+            // const char *path = cmd + 3; // TODO: Implement path handling
+        }
         shell_print(data, "total 24");
         shell_print(data, "drwxr-xr-x 2 root root 4096 .");
         shell_print(data, "drwxr-xr-x 2 root root 4096 ..");
@@ -415,7 +417,6 @@ static void shell_execute(struct wm_window *win, const char *cmd) {
         }
     } else if (strncmp(cmd, "touch ", 6) == 0) {
         const char *filename = cmd + 6;
-        struct vfs_file file;
         // Try to create file
         if (vfs_create(filename, 0) == 0) {
             sprintf(buf, "Created: %s", filename);
@@ -608,13 +609,12 @@ static void shell_execute(struct wm_window *win, const char *cmd) {
         shell_print(data, " _       _ _ _               _   ");
         shell_print(data, "| |_ ___| | | |___ ___ _ _ _| |_ ");
         shell_print(data, "|   / -_| | | / _ / _ | '_/ _|  _|");
-        shell_print(data, "|_|_\\___|_|_|_\\___\___|_| \\__|\\__|");
+
     } else if (strcmp(cmd, "sl") == 0) {
         shell_print(data, "      ====        ________                ___________");
-        shell_print(data, "  _D _|  |_______/        \\_____I______ /             \___");
+        shell_print(data, "  _D _|  |_______/        \\_____I______ /             \\___");
         shell_print(data, "   |(_)---  |   H\\________/ |   |        =|___ ___|   _______");
         shell_print(data, "   /     |  |   H  |  |     |   |         ||_| |_||   _|     ");
-        shell_print(data, "  |      |  |   H  |__--------------------| [___] | |=|   _____");
         shell_print(data, "  | ________|___H__/__|_____/[][]~\\_______|       |-| ____|");
         shell_print(data, "  |/ |   |-----------I_____I [][] []  D   |=======|____|_____|");
         shell_print(data, "__/ =| o |=-~~\\  /~~\\  /~~\\  /~~\\ ____Y___________|__|______");

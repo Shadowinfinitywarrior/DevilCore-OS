@@ -46,6 +46,7 @@ int syscall_exit(uint64_t status, uint64_t a1, uint64_t a2, uint64_t a3, uint64_
 }
 
 int syscall_read(uint64_t fd, uint64_t buf, uint64_t count, uint64_t a3, uint64_t a4) {
+    (void)fd;
     (void)a3;
     (void)a4;
     

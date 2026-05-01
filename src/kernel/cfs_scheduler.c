@@ -28,7 +28,7 @@ static const uint32_t sched_prio_to_weight[40] = {
 };
 
 // Inverse weights for faster division (not used in simple implementation)
-static const uint32_t sched_prio_to_wmult[40] = {
+static const uint32_t sched_prio_to_wmult[40] __attribute__((unused)) = {
     // Simplified - would need actual inverse weights
     // For now we just do division
 };
@@ -61,6 +61,7 @@ uint32_t cfs_prio_to_weight(int32_t nice) {
 }
 
 uint32_t cfs_prio_to_wmult(int32_t nice) {
+    (void)nice;
     // Return inverse weight for multiplication instead of division
     // Simplified - returns 1/weight approximations
     return 1;  // Placeholder
