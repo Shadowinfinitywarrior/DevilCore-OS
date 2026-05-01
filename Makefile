@@ -20,12 +20,14 @@ C_OBJECTS := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(C_SOURCES))
 ASM_OBJECTS := $(patsubst src/%.asm,$(BUILD_DIR)/%.o,$(ASM_SOURCES))
 OBJECTS := $(C_OBJECTS) $(ASM_OBJECTS)
 
-CFLAGS := -std=c17 -O2 -Wall -Wextra -ffreestanding -fno-stack-protector \
+CFLAGS := -std=c17 -Os -Wall -Wextra -ffreestanding -fno-stack-protector \
 	-fno-pic -fno-asynchronous-unwind-tables -fno-unwind-tables \
 	-m64 -mcmodel=kernel -mno-red-zone -mno-mmx -mno-sse -mno-sse2 \
+	-ffunction-sections -fdata-sections \
 	-D_FORTIFY_SOURCE=0 -I./src/kernel
-LDFLAGS := -m elf_x86_64 -T linker.ld -z max-page-size=0x1000
+LDFLAGS := -m elf_x86_64 -T linker.ld -z max-page-size=0x1000 --gc-sections
 NASMFLAGS := -f elf64
+STRIP := $(TOOLCHAIN_PREFIX)strip
 
 .PHONY: all kernel hdd iso run clean
 
@@ -40,6 +42,7 @@ iso: $(ISO_IMAGE)
 $(KERNEL_ELF): $(OBJECTS) linker.ld
 	@mkdir -p $(dir $@)
 	$(LD) $(LDFLAGS) -o $@ $(OBJECTS)
+	$(STRIP) --strip-all $@
 
 $(ISO_IMAGE): $(KERNEL_ELF) limine.conf
 	mkdir -p $(DIST_DIR) $(ISO_DIR)/boot $(ISO_DIR)/EFI/BOOT

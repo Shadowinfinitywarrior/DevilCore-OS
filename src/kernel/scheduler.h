@@ -76,6 +76,9 @@ struct task {
     
     void *fd_table[32];
     int32_t exit_status;
+    
+    // For CFS scheduler data
+    void *sched_data;
 };
 
 struct schedule_queue {

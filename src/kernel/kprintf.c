@@ -24,10 +24,9 @@ static void uint_to_str(uint64_t value, char *buf, int base) {
     buf[i] = '\0';
 }
 
-int sprintf(char *buf, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    
+extern void serial_write_string(const char *text);
+
+int vsprintf(char *buf, const char *fmt, va_list args) {
     char *p = buf;
     const char *f = fmt;
     
@@ -35,6 +34,13 @@ int sprintf(char *buf, const char *fmt, ...) {
         if (*f == '%') {
             ++f;
             if (*f == 'u') {
+                uint64_t val = va_arg(args, uint64_t);
+                char num[32];
+                uint_to_str(val, num, 10);
+                char *n = num;
+                while (*n) { *p++ = *n; n++; }
+            } else if (*f == 'l' && *(f+1) == 'u') {
+                f++;
                 uint64_t val = va_arg(args, uint64_t);
                 char num[32];
                 uint_to_str(val, num, 10);
@@ -76,6 +82,22 @@ int sprintf(char *buf, const char *fmt, ...) {
     }
     
     *p = '\0';
-    va_end(args);
     return (int)(p - buf);
+}
+
+int sprintf(char *buf, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int res = vsprintf(buf, fmt, args);
+    va_end(args);
+    return res;
+}
+
+void kprintf(const char *fmt, ...) {
+    char buf[1024];
+    va_list args;
+    va_start(args, fmt);
+    vsprintf(buf, fmt, args);
+    va_end(args);
+    serial_write_string(buf);
 }

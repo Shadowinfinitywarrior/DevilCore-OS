@@ -22,6 +22,14 @@
 #include "gdt.h"
 #include <stdio.h>
 
+// New Architecture Components
+#include "compositor.h"
+#include "slab.h"
+#include "font.h"
+#include "devilui.h"
+#include "ipc.h"
+#include "cfs_scheduler.h"
+
 void draw_sysinfo_content(struct wm_window *win) {
     char info[64];
     char comp_info[64];
@@ -220,8 +228,9 @@ __attribute__((noreturn))
 void kernel_main(void) {
     serial_init();
     interrupt_init();
-    serial_write_string("DevilCore OS v0.2\n");
-    serial_write_string("=======================\n");
+    serial_write_string("DevilCore OS v0.4 - Advanced Architecture\n");
+    serial_write_string("========================================\n");
+    serial_write_string("Features: Compositor + DevilUI + CFS + IPC + Slab\n");
 
     if (!LIMINE_BASE_REVISION_SUPPORTED) {
         serial_write_string("ERROR: Unsupported Limine revision\n");
@@ -323,6 +332,32 @@ void kernel_main(void) {
     // Initialize memory compression
     memory_compression_init();
     serial_write_string("[OK] Memory Compression initialized\n");
+
+    // Initialize Slab Allocator (new architecture)
+    slab_init();
+    serial_write_string("[OK] Slab Allocator initialized\n");
+
+    // Initialize Font System (new architecture)
+    font_system_init();
+    serial_write_string("[OK] Font System initialized\n");
+
+    // Initialize Compositor (new architecture)
+    static compositor_t compositor;
+    compositor_init(&compositor, (uint32_t*)framebuffer->address, 
+                    framebuffer->width, framebuffer->height, framebuffer->pitch / 4);
+    serial_write_string("[OK] Compositor initialized\n");
+
+    // Initialize DevilUI (new architecture)
+    devilui_init();
+    serial_write_string("[OK] DevilUI initialized\n");
+
+    // Initialize IPC (new architecture)
+    ipc_init();
+    serial_write_string("[OK] IPC initialized\n");
+
+    // Initialize CFS Scheduler (new architecture)
+    cfs_init();
+    serial_write_string("[OK] CFS Scheduler initialized\n");
 
     serial_write_string("HHDM offset: ");
     serial_write_hex_u64(hhdm_offset());

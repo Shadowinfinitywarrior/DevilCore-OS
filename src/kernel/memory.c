@@ -311,3 +311,44 @@ void memory_init(
 
     heap_init();
 }
+
+static uint64_t user_heap_base = 0x40000000; // Example user heap base
+static uint64_t user_heap_end = 0x40000000;
+
+void *mmap_user(uint64_t addr, uint64_t length, uint32_t prot, uint32_t flags) {
+    if (length == 0) return NULL;
+    
+    uint64_t pages = align_up_u64(length, PAGE_SIZE) / PAGE_SIZE;
+    uint64_t start_addr = addr ? align_up_u64(addr, PAGE_SIZE) : user_heap_end;
+    
+    for (uint64_t i = 0; i < pages; i++) {
+        uint64_t phys = (uint64_t)(uintptr_t)pmm_alloc_page();
+        if (!phys) return NULL;
+        
+        uint64_t page_flags = PAGE_PRESENT;
+        if (prot & 2) page_flags |= PAGE_WRITABLE; // Simplified PROT_WRITE
+        
+        paging_map_page(start_addr + i * PAGE_SIZE, phys, page_flags);
+        zero_page(phys_to_virt(start_addr + i * PAGE_SIZE));
+    }
+    
+    if (start_addr + pages * PAGE_SIZE > user_heap_end) {
+        user_heap_end = start_addr + pages * PAGE_SIZE;
+    }
+    
+    return (void *)start_addr;
+}
+
+void *brk_user(void *addr) {
+    uint64_t new_brk = (uint64_t)addr;
+    if (new_brk < user_heap_base) return (void *)user_heap_end;
+    
+    if (new_brk > user_heap_end) {
+        // Extend heap
+        uint64_t length = new_brk - user_heap_end;
+        if (!mmap_user(user_heap_end, length, 3, 0)) return (void *)user_heap_end;
+    }
+    
+    user_heap_end = new_brk;
+    return (void *)user_heap_end;
+}
