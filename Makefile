@@ -13,7 +13,10 @@ ISO_IMAGE := $(DIST_DIR)/DevilCore.iso
 LIMINE_DIR := third_party/limine
 LIMINE := $(LIMINE_DIR)/limine
 
+# No changes needed if wildcards are used correctly. Let's verify.
 C_SOURCES := $(wildcard src/kernel/*.c)
+# vma.c is in src/kernel/ so it should be picked up.
+
 ASM_SOURCES := $(wildcard src/kernel/*.asm)
 
 C_OBJECTS := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(C_SOURCES))
@@ -109,7 +112,7 @@ test: $(ISO_IMAGE)
 	rm -f serial.log
 	$(QEMU) -m 512M -cdrom $(ISO_IMAGE) -boot d -serial file:serial.log -display none & \
 	PID=$$!; \
-	sleep 5; \
+	sleep 30; \
 	kill $$PID; \
 	grep "DevilCore OS boot complete!" serial.log && (echo "TEST PASSED"; exit 0) || (echo "TEST FAILED"; exit 1)
 

@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "spinlock.h"
 
 // Slab cache for fixed-size objects
 typedef struct slab_cache {
@@ -23,6 +24,8 @@ typedef struct slab_cache {
     uint32_t total_slabs;
     uint32_t free_objects;
     uint32_t total_objects;
+    
+    spinlock_t lock;
     
     struct slab_cache *next;
 } slab_cache_t;

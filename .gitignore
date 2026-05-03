@@ -17,3 +17,14 @@ __pycache__/
 .DS_Store
 Thumbs.db
 *.log
+
+# Build and binary files
+build/
+dist/
+bin/
+iso_root/boot/kernel.elf
+*.o
+*.iso
+*.elf
+*.bin
+

@@ -605,18 +605,27 @@ static void shell_execute(struct wm_window *win, const char *cmd) {
         shell_print(data, "00:01.0 ISA bridge: Intel Corporation 82371SB PIIX3 ISA");
         shell_print(data, "00:02.0 VGA compatible controller: Device 1234:1111");
         shell_print(data, "00:03.0 Ethernet controller: Realtek RTL8139");
+    } else if (strcmp(cmd, "whoami") == 0) {
+        shell_print(data, "root");
+    } else if (strcmp(cmd, "clear") == 0) {
+        for (int i = 0; i < SHELL_MAX_LINES; i++) {
+            data->output[i][0] = '\0';
+        }
+        data->output_row = 0;
+        data->scroll_top = 0;
     } else if (strcmp(cmd, "neofetch") == 0) {
-        shell_print(data, "         .---.            root@devilcore");
-        shell_print(data, "        /     \\           ------------");
-        shell_print(data, "       | O   O |          OS: DevilCore OS 0.1");
-        shell_print(data, "       |  \\_/  |          Kernel: 0.1.0-dev");
-        shell_print(data, "        \\_____/           Uptime: Just now");
-        shell_print(data, "          | |             Shell: DevilCore Shell");
-        shell_print(data, "          | |             Resolution: 1024x768");
-        shell_print(data, "         /   \\            DE: DevilCore WM");
-        shell_print(data, "        '     '           WM: Monolithic Framebuffer");
-        shell_print(data, "                         Theme: Dark Modern");
-        shell_print(data, "                         Icons: PixelArt");
+        shell_print_color(data, "         .---.            root@devilcore", 0x00ff4444);
+        shell_print_color(data, "        /     \\           ------------", 0x00ff4444);
+        shell_print_color(data, "       |  o  o  |          OS: DevilCore OS v0.5 Platinum", 0x00ff4444);
+        shell_print_color(data, "       |   \\_/  |          Kernel: 0.5.0-platinum-x86_64", 0x00ff4444);
+        shell_print_color(data, "        \\_____/           Uptime: 13m 37s", 0x00ff4444);
+        shell_print_color(data, "          | |             Shell: DevilShell v2.0", 0x00ff4444);
+        shell_print_color(data, "          | |             Resolution: 1024x768 (LFB)", 0x00ff4444);
+        shell_print_color(data, "         /   \\            DE: DevilUI Compositor", 0x00ff4444);
+        shell_print_color(data, "        '     '           WM: DevilCore WM (Stacked)", 0x00ff4444);
+        shell_print_color(data, "                         CPU: x86_64 Virtual CPU", 0x00ff4444);
+        shell_print_color(data, "                         GPU: VBE Standard Graphics", 0x00ff4444);
+        shell_print_color(data, "                         Memory: 128MB / 512MB", 0x00ff4444);
     } else if (strcmp(cmd, "cowsay") == 0) {
         shell_print(data, " _______");
         shell_print(data, "< Moo! >");

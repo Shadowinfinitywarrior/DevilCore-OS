@@ -36,6 +36,9 @@ void timer_set_callback(void (*callback)(void)) {
 
 void timer_tick(void) {
     ++g_ticks;
+    if (g_ticks % 100 == 0) {
+        // serial_write_string("."); // Heartbeat every second
+    }
     if (g_callback != NULL) {
         g_callback();
     }

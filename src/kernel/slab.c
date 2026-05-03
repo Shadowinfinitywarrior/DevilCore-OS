@@ -1,5 +1,6 @@
 #include "slab.h"
 #include "memory.h"
+#include "spinlock.h"
 #include <string.h>
 #include <stdbool.h>
 
@@ -19,6 +20,7 @@ slab_cache_t *cache_4096 = NULL;
 
 // Slab cache list for tracking
 static slab_cache_t *cache_list = NULL;
+static spinlock_t cache_list_lock;
 
 // Page size (4KB)
 #define PAGE_SIZE 4096
@@ -50,12 +52,18 @@ static void slab_cache_init(slab_cache_t *cache, const char *name,
     cache->total_slabs = 0;
     cache->free_objects = 0;
     cache->total_objects = 0;
+    spin_init(&cache->lock);
+    
+    spin_lock(&cache_list_lock);
     cache->next = cache_list;
     cache_list = cache;
+    spin_unlock(&cache_list_lock);
 }
 
 void slab_init(void) {
     kprintf("Initializing slab allocator...\n");
+    
+    spin_init(&cache_list_lock);
     
     // Create static cache structures
     static slab_cache_t caches[10];
@@ -188,6 +196,8 @@ static uint32_t find_first_free(uint8_t *bitmap, uint32_t num_objects) {
 void *slab_alloc(slab_cache_t *cache) {
     if (!cache) return NULL;
     
+    spin_lock(&cache->lock);
+    
     // Try to find a partial slab
     slab_t *slab = cache->partial;
     
@@ -209,7 +219,10 @@ void *slab_alloc(slab_cache_t *cache) {
     // If still no slab, allocate a new one
     if (!slab) {
         slab = alloc_slab(cache);
-        if (!slab) return NULL;
+        if (!slab) {
+            spin_unlock(&cache->lock);
+            return NULL;
+        }
         
         // Add to partial list
         slab->next = cache->partial;
@@ -221,6 +234,7 @@ void *slab_alloc(slab_cache_t *cache) {
     // Allocate object
     uint32_t idx = find_first_free(slab->bitmap, cache->objects_per_slab);
     if (idx >= cache->objects_per_slab) {
+        spin_unlock(&cache->lock);
         return NULL;  // Should not happen if free_count is correct
     }
     
@@ -254,14 +268,17 @@ void *slab_alloc(slab_cache_t *cache) {
         cache->ctor(obj);
     }
     
+    spin_unlock(&cache->lock);
+    
     return obj;
 }
 
 void slab_free(slab_cache_t *cache, void *obj) {
     if (!cache || !obj) return;
     
+    spin_lock(&cache->lock);
+    
     // Find which slab this object belongs to
-    // We need to search through all slabs (can be optimized)
     slab_t *slab = NULL;
     
     // Check partial slabs
@@ -286,6 +303,7 @@ void slab_free(slab_cache_t *cache, void *obj) {
     
     if (!slab) {
         kprintf("slab_free: object not found in any slab\n");
+        spin_unlock(&cache->lock);
         return;
     }
     
@@ -334,13 +352,15 @@ void slab_free(slab_cache_t *cache, void *obj) {
         slab->prev = NULL;
         if (cache->empty) cache->empty->prev = slab;
         cache->empty = slab;
-        
-        // TODO: Consider freeing empty slabs after a threshold
     }
+    
+    spin_unlock(&cache->lock);
 }
 
 void slab_cache_destroy(slab_cache_t *cache) {
     if (!cache) return;
+    
+    spin_lock(&cache->lock);
     
     // Free all slabs
     slab_t *slab;
@@ -360,34 +380,57 @@ void slab_cache_destroy(slab_cache_t *cache) {
         free_slab(slab);
     }
     
+    spin_unlock(&cache->lock);
+    
     // Remove from cache list
+    spin_lock(&cache_list_lock);
     if (cache_list == cache) {
         cache_list = cache->next;
+    } else {
+        slab_cache_t *curr = cache_list;
+        while (curr->next) {
+            if (curr->next == cache) {
+                curr->next = cache->next;
+                break;
+            }
+            curr = curr->next;
+        }
     }
+    spin_unlock(&cache_list_lock);
 }
 
 uint32_t slab_cache_free_count(slab_cache_t *cache) {
     if (!cache) return 0;
-    return cache->free_objects;
+    spin_lock(&cache->lock);
+    uint32_t count = cache->free_objects;
+    spin_unlock(&cache->lock);
+    return count;
 }
 
 uint32_t slab_cache_used_count(slab_cache_t *cache) {
     if (!cache) return 0;
-    return cache->total_objects - cache->free_objects;
+    spin_lock(&cache->lock);
+    uint32_t used = cache->total_objects - cache->free_objects;
+    spin_unlock(&cache->lock);
+    return used;
 }
 
 void slab_print_stats(void) {
     kprintf("=== Slab Allocator Statistics ===\n");
     
+    spin_lock(&cache_list_lock);
     for (slab_cache_t *cache = cache_list; cache; cache = cache->next) {
-        uint32_t used = slab_cache_used_count(cache);
+        spin_lock(&cache->lock);
+        uint32_t used = cache->total_objects - cache->free_objects;
         uint32_t total = cache->total_objects;
         uint32_t slabs = cache->total_slabs;
         
         kprintf("%-12s: %u/%u used (%u%%) in %u slabs\n",
                 cache->name, used, total, 
                 total > 0 ? (used * 100) / total : 0, slabs);
+        spin_unlock(&cache->lock);
     }
+    spin_unlock(&cache_list_lock);
 }
 
 // Size-optimized general purpose allocator
@@ -436,12 +479,14 @@ void kfree_slab(void *ptr) {
     
     // Verify it's a valid cache by checking against cache_list
     bool valid = false;
+    spin_lock(&cache_list_lock);
     for (slab_cache_t *c = cache_list; c; c = c->next) {
         if (c == cache) {
             valid = true;
             break;
         }
     }
+    spin_unlock(&cache_list_lock);
     
     if (valid) {
         slab_free(cache, (void *)cache_ptr);
@@ -462,12 +507,14 @@ void *krealloc_slab(void *ptr, size_t new_size) {
     
     // Verify it's a valid cache
     bool valid = false;
+    spin_lock(&cache_list_lock);
     for (slab_cache_t *c = cache_list; c; c = c->next) {
         if (c == cache) {
             valid = true;
             break;
         }
     }
+    spin_unlock(&cache_list_lock);
     
     size_t old_size = 0;
     if (valid) {

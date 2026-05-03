@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "spinlock.h"
 
 // Message types
 typedef enum {
@@ -69,11 +70,6 @@ typedef struct message {
     uint64_t shm_size;
 } message_t;
 
-// Spinlock for synchronization
-typedef struct {
-    volatile uint32_t locked;
-} spinlock_t;
-
 // Event for synchronization
 typedef struct {
     volatile uint32_t signaled;
@@ -136,21 +132,6 @@ int msg_queue_receive(msg_queue_t *queue, message_t *msg, bool blocking);
 int ipc_register_service(const char *name, uint32_t pid);
 int ipc_unregister_service(const char *name);
 uint32_t ipc_lookup_service(const char *name);
-
-// Helper functions
-static inline void spinlock_init(spinlock_t *lock) {
-    lock->locked = 0;
-}
-
-static inline void spinlock_acquire(spinlock_t *lock) {
-    while (__sync_lock_test_and_set(&lock->locked, 1)) {
-        // Spin
-    }
-}
-
-static inline void spinlock_release(spinlock_t *lock) {
-    __sync_lock_release(&lock->locked);
-}
 
 static inline void event_init(sync_event_t *event) {
     event->signaled = 0;

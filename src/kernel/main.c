@@ -25,6 +25,10 @@
 #include "settings.h"
 #include "memory_compress.h"
 #include "gdt.h"
+#include "ahci.h"
+#include "e1000.h"
+#include "smp.h"
+#include "logo.h"
 #include <stdio.h>
 
 // New Architecture Components
@@ -40,38 +44,34 @@ void draw_sysinfo_content(struct wm_window *win) {
     char comp_info[64];
     
     // Draw background
-    fb_fill_rect(win->widget.x, win->widget.y, win->widget.width, win->widget.height, 0x001a1a1a);
+    fb_fill_rect(win->widget.x, win->widget.y, win->widget.width, win->widget.height, 0x001a1a2e);
     
-    // Logo area
-    fb_fill_rect_rounded(win->widget.x + 10, win->widget.y + 10, 50, 50, 8, 0x0044ffcc);
-    fb_draw_string(win->widget.x + 22, win->widget.y + 28, "DC", 0x00000000, 0);
+    // Centered Logo
+    uint32_t logo_x = win->widget.x + (win->widget.width - 64) / 2;
+    logo64_draw(logo_x, win->widget.y + 10, 1);
     
-    fb_draw_string(win->widget.x + 70, win->widget.y + 15, "DevilCore OS", 0x00ffffff, 0);
-    fb_draw_string(win->widget.x + 70, win->widget.y + 35, "v2.0 Premium Edition", 0x00888888, 0);
+    fb_draw_string_centered(win->widget.x, win->widget.y + 80, win->widget.width, "DevilCore Platinum", 0x0044ffcc);
+    fb_draw_string_centered(win->widget.x, win->widget.y + 100, win->widget.width, "The Ethical Hacking OS", 0x00888888);
     
-    fb_draw_line(win->widget.x + 10, win->widget.y + 70, win->widget.x + win->widget.width - 10, win->widget.y + 70, 0x00333333);
+    fb_draw_line(win->widget.x + 10, win->widget.y + 120, win->widget.x + win->widget.width - 10, win->widget.y + 120, 0x00333333);
 
-    sprintf(info, "Architecture: x86_64 (64-bit)");
-    fb_draw_string(win->widget.x + 15, win->widget.y + 85, info, 0x00cccccc, 0);
+    sprintf(info, "Version: 0.5.0-platinum");
+    fb_draw_string(win->widget.x + 15, win->widget.y + 135, info, 0x00cccccc, 0);
 
-    sprintf(info, "Memory: %u MB Total RAM", (pmm_total_pages() * 4) / 1024);
-    fb_draw_string(win->widget.x + 15, win->widget.y + 105, info, 0x00cccccc, 0);
+    sprintf(info, "Arch: x86_64-baremetal");
+    fb_draw_string(win->widget.x + 15, win->widget.y + 155, info, 0x00cccccc, 0);
 
-    sprintf(info, "Uptime: %u sec", (uint32_t)(timer_ticks() / 100));
-    fb_draw_string(win->widget.x + 15, win->widget.y + 125, info, 0x00cccccc, 0);
+    sprintf(info, "Memory: %u MB Total", (pmm_total_pages() * 4) / 1024);
+    fb_draw_string(win->widget.x + 15, win->widget.y + 175, info, 0x00cccccc, 0);
 
     memory_compression_format_stats(comp_info, sizeof(comp_info));
-    fb_draw_string(win->widget.x + 15, win->widget.y + 145, comp_info, 0x00aaaaaa, 0);
-    
-    fb_draw_string(win->widget.x + 15, win->widget.y + 175, "The Ultimate Hacking Environment", 0x0000ff00, 0);
+    fb_draw_string(win->widget.x + 15, win->widget.y + 195, comp_info, 0x00aaaaaa, 0);
 }
 
 void show_sysinfo(void) {
-    struct wm_window *win = wm_create_window("System Information", 300, 200, 300, 200);
+    struct wm_window *win = wm_create_window("About System", 300, 200, 350, 250);
     if (win) {
         win->draw_content = draw_sysinfo_content;
-        wm_draw_desktop();
-        fb_flip();
     }
 }
 
@@ -80,8 +80,6 @@ void open_terminal(void) {
     if (term) {
         term->draw_content = shell_update;
         shell_init(term);
-        wm_draw_desktop();
-        fb_flip();
     }
 }
 
@@ -121,6 +119,12 @@ static volatile struct limine_kernel_address_request kernel_address_request = {
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_rsdp_request rsdp_request = {
     .id = LIMINE_RSDP_REQUEST,
+    .revision = 0
+};
+
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_smp_request smp_request = {
+    .id = LIMINE_SMP_REQUEST,
     .revision = 0
 };
 
@@ -195,15 +199,24 @@ static void pci_callback(struct pci_device *pci) {
     if (pci->vendor_id == RTL8139_VENDOR_ID && pci->device_id == RTL8139_DEVICE_ID) {
         serial_write_string("Found RTL8139 Network Card\n");
         rtl8139_init(pci);
+    } else if (pci->class_code == 0x01 && pci->subclass_code == 0x06) {
+        serial_write_string("Found AHCI Controller\n");
+        ahci_init(pci);
+    } else if (pci->vendor_id == E1000_VENDOR_ID && pci->device_id == E1000_DEVICE_ID) {
+        serial_write_string("Found Intel E1000 Network Card\n");
+        e1000_init(pci);
     }
 }
 
-#include "scheduler.h"
+#include "cfs_scheduler.h"
+#include "syscall.h"
 
 void wm_task(void) {
     uint64_t last_frame = timer_ticks();
-    const uint64_t frame_interval = 2; // ~50 FPS at 100Hz timer (smoother)
+    const uint64_t frame_interval = 1; // ~100 FPS at 100Hz timer (max smoothness)
     uint8_t consecutive_no_redraw = 0;
+    
+    serial_write_string("WM Task started\n");
     
     for (;;) {
         struct wm_desktop *d = wm_get_desktop();
@@ -231,9 +244,9 @@ void wm_task(void) {
                 consecutive_no_redraw++;
             }
             
-            // If nothing to do, yield more aggressively to save CPU
-            if (consecutive_no_redraw > 50) {
-                for (int i = 0; i < 10; i++) scheduler_yield();
+            // If nothing to do, yield briefly to avoid hogging CPU, but keep latency low
+            if (consecutive_no_redraw > 100) {
+                scheduler_yield();
                 consecutive_no_redraw = 0;
             }
         }
@@ -244,7 +257,7 @@ void wm_task(void) {
 __attribute__((noreturn))
 void kernel_main(void) {
     serial_init();
-    interrupt_init();
+    // interrupt_init(); // Removed early call
     serial_write_string("DevilCore OS v0.4 - Advanced Architecture\n");
     serial_write_string("========================================\n");
     serial_write_string("Features: Compositor + DevilUI + CFS + IPC + Slab\n");
@@ -286,7 +299,12 @@ void kernel_main(void) {
     serial_write_string("[OK] GDT initialized\n");
 
     interrupt_init();
+    sti(); // Enable interrupts for timer
+    uint64_t boot_start_time = timer_ticks();
     serial_write_string("[OK] Interrupts initialized\n");
+
+    syscall_init();
+    serial_write_string("[OK] Syscalls initialized\n");
 
     void *rsdp_ptr = NULL;
     if (rsdp_request.response != NULL) {
@@ -310,11 +328,39 @@ void kernel_main(void) {
         serial_write_string("ACPI: MADT not found.\n");
     }
 
+    if (smp_request.response != NULL) {
+        smp_init(smp_request.response);
+    } else {
+        serial_write_string("SMP: Limine SMP response missing.\n");
+    }
+
     fb_init(framebuffer_request.response);
+    struct framebuffer *fb = framebuffer;
+    
+    // Splash screen
+    if (fb) {
+        fb_fill_rect(0, 0, fb->width, fb->height, 0x00000000);
+        
+        // Large raw logo centered (uses raw pixel data from logo_raw.h)
+        uint32_t logo_x = (fb->width - 612) / 2;
+        uint32_t logo_y = (fb->height - 408) / 2 - 40;
+        logo_raw_draw(logo_x, logo_y);
+        
+        // fb_draw_string_scaled((fb->width - 9 * 8 * 3) / 2, logo_y + 408 + 20, "DevilCore", 0x00FF0000, 3);
+        fb_draw_string_centered(0, fb->height - 100, fb->width, "Initializing Ethical Hacking Environment...", 0x00888888);
+        fb_flip();
+    }
+
     serial_write_string("[OK] Framebuffer initialized\n");
 
     wm_init();
     serial_write_string("[OK] Window Manager initialized\n");
+
+    // Splash progress 1
+    if (fb) {
+        fb_fill_rect((fb->width - 300) / 2, fb->height - 60, 100, 4, 0x00FF0000);
+        fb_flip();
+    }
 
     // Add Desktop Icons for applications
     wm_add_icon("Terminal", "terminal", 40, 100, open_terminal);
@@ -331,18 +377,31 @@ void kernel_main(void) {
     wm_add_icon("Settings", "settings", 240, 200, settings_open);
     wm_add_icon("Browser", "browser", 240, 300, browser_open);
 
-    // Open initial terminal
+    // Open initial terminal and a system monitor for 'hacker' vibe
     open_terminal();
+    sysmonitor_open();
 
-    wm_draw_desktop();
-    wm_draw_taskbar();
+    // Splash progress 2
+    if (fb) {
+        fb_fill_rect((fb->width - 300) / 2 + 100, fb->height - 60, 100, 4, 0x00FF0000);
+        fb_flip();
+    }
+
+    // wm_draw_desktop();
+    // wm_draw_taskbar();
 
     pci_init();
     pci_enumerate_devices(pci_callback);
     serial_write_string("[OK] PCI initialized\n");
 
-    ata_init();
-    serial_write_string("[OK] ATA initialized\n");
+    // Splash progress 3
+    if (fb) {
+        fb_fill_rect((fb->width - 300) / 2 + 200, fb->height - 60, 100, 4, 0x00FF0000);
+        fb_flip();
+    }
+
+    // ata_init();
+    // serial_write_string("[OK] ATA initialized\n");
     
     // Initialize memory compression
     memory_compression_init();
@@ -384,10 +443,20 @@ void kernel_main(void) {
     serial_write_dec(pmm_free_pages());
     serial_write_string(")\n");
 
+    serial_write_string("DevilCore OS boot complete!\n");
+
+    // Wait for 5 seconds total for splash screen (500 ticks at 100Hz)
+    while (timer_ticks() - boot_start_time < 500) {
+        __asm__ volatile("hlt");
+    }
+
+    // Initialize tasks and start scheduler after the splash screen
     task_create("wm", wm_task, TASK_FLAG_KERNEL);
     serial_write_string("[OK] Window Manager task created\n");
 
-    serial_write_string("DevilCore OS boot complete!\n");
+    // Now draw initial desktop state before starting the scheduler
+    wm_draw_desktop();
+
     serial_write_string("Calling scheduler_start...\n");
 
     scheduler_start();

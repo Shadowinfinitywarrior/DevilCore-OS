@@ -96,6 +96,15 @@ context_switch_asm:
     mov rsp, [rsi + 152] ; new_task->rsp offset 152
     
 .pop_new_context:
+    ; Update TSS RSP0 for user mode -> kernel mode transitions
+    ; We need to preserve RSI across the function call
+    push rsi
+    mov rax, [rsi + 136] ; new_task->kernel_stack (offset 136)
+    add rax, 16384       ; KERNEL_STACK_SIZE
+    mov rdi, rax
+    call tss_set_rsp0
+    pop rsi
+
     ; Pop new task's context (reverse order of push)
     popfq
     pop rax
@@ -114,8 +123,17 @@ context_switch_asm:
     pop r14
     pop r15
     
-    ; Ret to new task's entry point (on new stack)
+    ; Safely check if we should return to user mode
+    push rsi
+    mov rsi, [rel current_task]
+    test dword [rsi + 80], 0x02
+    jnz .user_ret_fix
+    pop rsi
     ret
+
+.user_ret_fix:
+    pop rsi
+    iretq
 
 section .bss
 align 16

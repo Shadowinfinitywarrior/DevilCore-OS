@@ -21,6 +21,22 @@
 #include "icons.h"
 #include <stdio.h>
 
+extern void open_terminal(void);
+extern void show_sysinfo(void);
+extern void browser_open(void);
+extern void sysmonitor_open(void);
+extern void netscanner_open(void);
+extern void calc_open(void);
+extern void fm_open(void);
+extern void notes_open(void);
+extern void settings_open(void);
+extern void netscanner_open(void);
+// Forward declarations for internal WM functions
+static void wm_taskbar_on_event(struct wm_widget *widget, struct wm_event *event);
+void wm_taskbar_draw(struct wm_widget *widget);
+void wm_start_menu_draw(struct wm_widget *widget);
+static void wm_start_menu_on_event(struct wm_widget *widget, struct wm_event *event);
+
 struct wm_theme current_theme = {
     .bg_color = 0xFF2D2D2D,
     .fg_color = 0xFFFFFFFF,
@@ -420,171 +436,93 @@ void wm_taskbar_draw(struct wm_widget *widget) {
     }
 }
 
-static void wm_taskbar_on_event(struct wm_widget *widget, struct wm_event *event) {
-    (void)widget;
-    if (event->type == WM_EVENT_MOUSE_PRESS && (event->buttons & 1)) {
-        if (event->x >= 4 && event->x <= 36) {
-            wm_show_start_menu();
-        } else {
-            // Check window tabs
-            int32_t tab_x = 44;
-            for (uint32_t i = 0; i < desktop->window_count; ++i) {
-                if (event->x >= tab_x && event->x < tab_x + 120) {
-                    struct wm_window *win = desktop->windows[i];
-                    if (win->minimized) {
-                        // Restore minimized window
-                        win->minimized = 0;
-                        win->widget.visible = 1;
-                        wm_focus_window(win);
-                    } else {
-                        // Minimize window
-                        win->minimized = 1;
-                        win->widget.visible = 0;
-                    }
-                    wm_draw_desktop();
-                    break;
-                }
-                tab_x += 124;
-            }
-        }
-    }
-}
-
 void wm_start_menu_draw(struct wm_widget *widget) {
     if (!start_menu_visible) return;
     
     struct wm_start_menu *sm = (struct wm_start_menu *)widget;
     
-    // Expanded menu dimensions
-    uint32_t menu_w = 450;
-    uint32_t menu_h = 500;
+    uint32_t menu_w = 400;
+    uint32_t menu_h = 520;
     
-    // Update widget size
     sm->widget.width = menu_w;
     sm->widget.height = menu_h;
+    sm->widget.y = framebuffer->height - desktop->taskbar_height - menu_h;
+
+    // Menu background with shadow
+    fb_fill_rect(sm->widget.x + 5, sm->widget.y + 5, menu_w, menu_h, 0x40000000); // Shadow
+    fb_fill_rect_gradient_v(sm->widget.x, sm->widget.y, menu_w, menu_h, 0x001a1a2e, 0x000f0f1a);
+    fb_draw_rect_outline(sm->widget.x, sm->widget.y, menu_w, menu_h, 0x0044ffcc); // Accent color border
     
-    // Draw menu box with shadow
-    fb_fill_rect(sm->widget.x + 4, sm->widget.y + 4, menu_w, menu_h, 0x00000000); // Shadow
-    fb_fill_rect_alpha(sm->widget.x, sm->widget.y, menu_w, menu_h, 0x00202020, 245);
-    fb_draw_rect_outline(sm->widget.x, sm->widget.y, menu_w, menu_h, 0x00666666);
+    // Logo section at top
+    uint32_t logo_h = 100;
+    fb_fill_rect_gradient_h(sm->widget.x, sm->widget.y, menu_w, logo_h, 0x001a1a2e, 0x002a2a4e);
     
-    // Header with OS branding
-    fb_fill_rect_gradient_v(sm->widget.x + 1, sm->widget.y + 1, menu_w - 2, 80, 
-                            current_theme.accent_color, 0x00880000);
-    fb_draw_string(sm->widget.x + 20, sm->widget.y + 25, "DevilCore OS v0.3", 0x00ffffff, 0);
-    fb_draw_string(sm->widget.x + 20, sm->widget.y + 50, "The Ethical Hacking Platform", 0x00ff6666, 0);
-    fb_draw_string(sm->widget.x + 20, sm->widget.y + 65, "root@devilcore", 0x00cccccc, 0);
+    // Draw scaled logo (centerd)
+    uint32_t logo_w_scaled = 80;
+    uint32_t logo_h_scaled = 53; 
+    uint32_t logo_x = sm->widget.x + 20;
+    uint32_t logo_y = sm->widget.y + 20;
+    fb_draw_bitmap_scaled(logo_x, logo_y, logo_w_scaled, logo_h_scaled, LOGO_WIDTH, LOGO_HEIGHT, logo_pixels);
     
-    // Draw small logo in header (32x32 at position)
-    logo32_draw(sm->widget.x + menu_w - 45, sm->widget.y + 24);
+    // OS Name next to logo
+    fb_draw_string(logo_x + logo_w_scaled + 15, sm->widget.y + 35, "DevilCore Platinum", 0x0044ffcc, 0);
+    fb_draw_string(logo_x + logo_w_scaled + 15, sm->widget.y + 50, "Cyber Security Platform", 0x00aaaaaa, 0);
+    fb_draw_string(logo_x + logo_w_scaled + 15, sm->widget.y + 65, "root@devilcore", 0x00ff4444, 0);
     
-    // Categories and apps
-    int32_t y_offset = sm->widget.y + 95;
+    // Separator
+    fb_draw_line(sm->widget.x + 10, sm->widget.y + logo_h, sm->widget.x + menu_w - 10, sm->widget.y + logo_h, 0x00333333);
     
-    // === PRODUCTIVITY ===
-    fb_draw_string(sm->widget.x + 15, y_offset, "PRODUCTIVITY", 0x00ff6666, 0);
-    fb_draw_line(sm->widget.x + 15, y_offset + 12, sm->widget.x + menu_w - 15, y_offset + 12, 0x00444444);
-    y_offset += 20;
+    // Menu items with icons
+    const char *menu_items[] = {"Terminal", "File Manager", "Text Editor", "Calculator", "System Monitor", "Web Browser", "Network Scanner", "Settings", "About System"};
+    const char *icon_names[] = {"terminal", "filemanager", "texteditor", "calculator", "system_monitor", "browser", "network", "settings", "info"};
     
-    const char *prod_apps[] = {"Terminal (Win+T)", "File Manager (Win+E)", "Text Editor (Win+N)", "Calculator (Win+C)", "Calendar (Win+K)", "Notes", "Music", "Pictures"};
-    const char *prod_icons[] = {"terminal", "filemanager", "texteditor", "calculator", "calendar", "notes", "music", "pictures"};
-    for (int i = 0; i < 8; ++i) {
-        const struct icon_data *app_icon = icon_get(prod_icons[i]);
-        if (app_icon) draw_icon(sm->widget.x + 20, y_offset, app_icon);
-        fb_draw_string(sm->widget.x + 55, y_offset + 8, prod_apps[i], 0x00ffffff, 0);
-        y_offset += 32;
+    for (int i = 0; i < 9; ++i) {
+        uint32_t item_y = sm->widget.y + logo_h + 10 + (i * 45);
+        
+        // Highlight on hover
+        if (desktop->mouse_y >= (int32_t)item_y && desktop->mouse_y < (int32_t)(item_y + 40) &&
+            desktop->mouse_x >= (int32_t)sm->widget.x && desktop->mouse_x < (int32_t)(sm->widget.x + menu_w)) {
+            fb_fill_rect(sm->widget.x + 5, item_y, menu_w - 10, 40, 0x002a2a4e);
+        }
+        
+        // Icon
+        const struct icon_data *icon = icon_get(icon_names[i]);
+        if (icon) {
+            draw_icon(sm->widget.x + 15, item_y + 4, icon);
+        }
+        
+        // Item text
+        fb_draw_string(sm->widget.x + 60, item_y + 14, menu_items[i], 0x00ffffff, 0);
     }
-    
-    // === SYSTEM ===
-    y_offset += 5;
-    fb_draw_string(sm->widget.x + 15, y_offset, "SYSTEM", 0x00ff6666, 0);
-    fb_draw_line(sm->widget.x + 15, y_offset + 12, sm->widget.x + menu_w - 15, y_offset + 12, 0x00444444);
-    y_offset += 20;
-    
-    const char *sys_apps[] = {"Privacy Browser (Win+B)", "Settings (Win+I)", "System Monitor", "About DevilCore", "Tasks", "Network", "Logs", "Security"};
-    const char *sys_icons[] = {"browser", "settings", "system_monitor", "info", "cpu", "network", "logs", "lock"};
-    for (int i = 0; i < 8; ++i) {
-        const struct icon_data *app_icon = icon_get(sys_icons[i]);
-        if (app_icon) draw_icon(sm->widget.x + 20, y_offset, app_icon);
-        fb_draw_string(sm->widget.x + 55, y_offset + 8, sys_apps[i], 0x00ffffff, 0);
-        y_offset += 32;
-    }
-    
-    // === POWER ===
-    y_offset += 5;
-    fb_draw_string(sm->widget.x + 15, y_offset, "POWER", 0x00ff6666, 0);
-    fb_draw_line(sm->widget.x + 15, y_offset + 12, sm->widget.x + menu_w - 15, y_offset + 12, 0x00444444);
-    y_offset += 20;
-    
-    const char *power_apps[] = {"Lock Screen (Win+L)", "Show Desktop (Win+D)", "Sleep", "Shutdown", "Restart"};
-    const char *power_icons[] = {"lock", "desktop", "sleep", "power", "restart"};
-    for (int i = 0; i < 5; ++i) {
-        const struct icon_data *app_icon = icon_get(power_icons[i]);
-        if (app_icon) draw_icon(sm->widget.x + 20, y_offset, app_icon);
-        else fb_fill_rect_rounded(sm->widget.x + 20, y_offset, 24, 24, 3, 0x00555555);
-        fb_draw_string(sm->widget.x + 55, y_offset + 8, power_apps[i], 0x00ffffff, 0);
-        y_offset += 32;
-    }
-    
-    // Keyboard shortcuts hint at bottom
-    y_offset = sm->widget.y + menu_h - 25;
-    fb_draw_line(sm->widget.x + 15, y_offset, sm->widget.x + menu_w - 15, y_offset, 0x00444444);
-    fb_draw_string(sm->widget.x + 15, y_offset + 8, "Press Win key for shortcuts", 0x00888888, 0);
 }
 
 static void wm_start_menu_on_event(struct wm_widget *widget, struct wm_event *event) {
-    (void)widget;
     if (!start_menu_visible) return;
     
     if (event->type == WM_EVENT_MOUSE_PRESS && (event->buttons & 1)) {
-        // Get relative Y position in menu
-        int32_t rel_y = event->y - (desktop->widget.height - 40 - 500 + 95);
+        uint32_t logo_h = 100;
+        int32_t item_start_y = widget->y + logo_h + 10;
         
-        // Productivity section: y = 0 to 256 (8 items * 32px)
-        if (rel_y >= 0 && rel_y < 256) {
-            int idx = rel_y / 32;
-            switch (idx) {
-                case 0: wm_open_terminal(); break;
-                case 1: wm_open_filemanager(); break;
-                case 2: wm_open_texteditor(); break;
-                case 3: wm_open_calculator(); break;
-                case 4: wm_open_calendar(); break;
-                case 5: notes_open(); break;
+        if (event->x >= (int32_t)widget->x && event->x < (int32_t)(widget->x + widget->width)) {
+            int item_idx = (event->y - item_start_y) / 45;
+            if (item_idx >= 0 && item_idx < 9) {
+                switch (item_idx) {
+                    case 0: open_terminal(); break;
+                    case 1: fm_open(); break;
+                    case 2: te_open(); break;
+                    case 3: calc_open(); break;
+                    case 4: sysmonitor_open(); break;
+                    case 5: browser_open(); break;
+                    case 6: netscanner_open(); break;
+                    case 7: settings_open(); break;
+                    case 8: show_sysinfo(); break;
+                }
+                start_menu_visible = 0;
+                desktop->needs_redraw = 1;
             }
-            wm_hide_start_menu();
-        }
-        // System section: y = 261 to 450
-        else if (rel_y >= 261 && rel_y < 517) {
-            int idx = (rel_y - 261) / 32;
-            switch (idx) {
-                case 0: browser_open(); break;
-                case 1: wm_open_settings(); break;
-                case 2: wm_open_sysmonitor(); break; // Live System Monitor
-                case 3: wm_show_about(); break;
-            }
-            wm_hide_start_menu();
-        }
-        // Power section: y = 266 to 426
-        else if (rel_y >= 266 && rel_y < 426) {
-            int idx = (rel_y - 266) / 32;
-            switch (idx) {
-                case 0: // Lock Screen
-                    desktop->screen = WM_SCREEN_LOGIN;
-                    memset(desktop->login_pass, 0, sizeof(desktop->login_pass));
-                    break;
-                case 1: // Show Desktop
-                    for (uint32_t i = 0; i < desktop->window_count; i++) {
-                        desktop->windows[i]->minimized = 1;
-                    }
-                    break;
-                case 2: wm_open_terminal(); break; // Run
-                case 3: // Shutdown
-                    // Show shutdown dialog
-                    break;
-                case 4: // Restart
-                    break;
-            }
-            wm_hide_start_menu();
+        } else {
+            start_menu_visible = 0;
+            desktop->needs_redraw = 1;
         }
     }
 }
@@ -645,7 +583,7 @@ void wm_init(void) {
     wm_widget_add_child(&desktop->widget, &desktop->taskbar.widget);
     
     // Initialize Start Menu
-    wm_widget_init(&desktop->start_menu.widget, WM_WIDGET_MENU, "StartMenu", 4, framebuffer->height - 40 - 400, 300, 400);
+    wm_widget_init(&desktop->start_menu.widget, WM_WIDGET_MENU, "StartMenu", 4, framebuffer->height - 40 - 520, 400, 520);
     desktop->start_menu.widget.draw = wm_start_menu_draw;
     desktop->start_menu.widget.on_event = wm_start_menu_on_event;
     wm_widget_add_child(&desktop->widget, &desktop->start_menu.widget);
@@ -682,9 +620,10 @@ void wm_init(void) {
     
     // Icons will be added by main() to avoid duplicates and ensure correct callbacks
     
-    serial_write_string("Drawing initial desktop...\n");
-    wm_draw_desktop();
-    serial_write_string("Initial desktop drawn.\n");
+    // serial_write_string("Drawing initial desktop...\n");
+    // wm_draw_desktop();
+    desktop->needs_redraw = 1;
+    // serial_write_string("Initial desktop drawn.\n");
 }
 
 void wm_add_icon(const char *label, const char *icon_name, int32_t x, int32_t y, void (*on_click)(void)) {
@@ -839,8 +778,8 @@ static void draw_modern_desktop_bg(void) {
     // Professional deep blue/gray gradient (modern look)
     fb_fill_rect_gradient_v(0, 0, w, h, 0x001a1a2e, 0x000f0f1a); 
     
-    // Subtle spotlight in center-top
-    fb_fill_rect_gradient_radial(w / 2, h / 3, h, 0x002a2a4e, 0x001a1a2e);
+    // Subtle spotlight in center-top (Too slow for now, uncomment when hardware accel available)
+    // fb_fill_rect_gradient_radial(w / 2, h / 3, h, 0x002a2a4e, 0x001a1a2e);
 
     // Static subtle grid pattern (professional, not animated)
     for (int32_t y = 0; y < (int32_t)h; y += 40) {
@@ -850,7 +789,8 @@ static void draw_modern_desktop_bg(void) {
         fb_draw_line(x, 0, x, h, 0x00222233);
     }
 
-    // Subtle vignette effect (optimized)
+    // Subtle vignette effect (Too slow for now, uncomment when hardware accel available)
+    /*
     for (int i = 0; i < 20; i++) {
         uint8_t alpha = (20 - i) * 3;
         fb_fill_rect_alpha(0, i, w, 1, 0x00000000, alpha); // Top
@@ -858,6 +798,7 @@ static void draw_modern_desktop_bg(void) {
         fb_fill_rect_alpha(i, 0, 1, h, 0x00000000, alpha); // Left
         fb_fill_rect_alpha(w - 1 - i, 0, 1, h, 0x00000000, alpha); // Right
     }
+    */
 }
 
 void wm_draw_desktop(void) {
@@ -947,58 +888,40 @@ void wm_draw_cursor(void) {
     }
 }
 
-void wm_draw_start_menu(void) {
-    if (desktop == NULL || framebuffer == NULL) {
-        return;
-    }
-    
-    uint32_t menu_x = 4;
-    uint32_t menu_y = framebuffer->height - desktop->taskbar_height - 480;
-    uint32_t menu_w = 350;
-    uint32_t menu_h = 480;
-    
-    // Menu background with shadow
-    fb_fill_rect(menu_x + 3, menu_y + 3, menu_w, menu_h, 0x0040000000);
-    fb_fill_rect_gradient_v(menu_x, menu_y, menu_w, menu_h, 0x00f0f0f0, 0x00e0e0e0);
-    fb_draw_rect_outline(menu_x, menu_y, menu_w, menu_h, 0x00cccccc);
-    
-    // Logo section at top
-    uint32_t logo_h = 100;
-    fb_fill_rect_gradient_h(menu_x, menu_y, menu_w, logo_h, current_theme.accent_color, current_theme.accent_color);
-    
-    // Draw scaled logo (centerd)
-    uint32_t logo_w_scaled = 80;
-    uint32_t logo_h_scaled = 53; // Maintain aspect ratio
-    uint32_t logo_x = menu_x + 15;
-    uint32_t logo_y = menu_y + 20;
-    fb_draw_bitmap_scaled(logo_x, logo_y, logo_w_scaled, logo_h_scaled, LOGO_WIDTH, LOGO_HEIGHT, logo_pixels);
-    
-    // OS Name next to logo
-    fb_draw_string(logo_x + logo_w_scaled + 10, menu_y + 40, "DevilCore OS", 0x00ffffff, 0);
-    fb_draw_string(logo_x + logo_w_scaled + 10, menu_y + 55, "v0.1", 0x00e0e0e0, 0);
-    
-    // Separator
-    fb_draw_line(menu_x + 10, menu_y + logo_h, menu_x + menu_w - 10, menu_y + logo_h, 0x00cccccc);
-    
-    // Menu items with icons
-    const char *menu_items[] = {"Terminal", "File Manager", "Text Editor", "Calculator", "Settings", "About"};
-    uint32_t icon_colors[] = {0x00006600, 0x00996633, 0x00660066, 0x00666600, 0x00663399, 0x00666666};
-    
-    for (int i = 0; i < 6; ++i) {
-        uint32_t item_y = menu_y + logo_h + 10 + (i * 45);
-        
-        // Highlight on hover
-        if (desktop->mouse_y >= (int32_t)item_y && desktop->mouse_y < (int32_t)(item_y + 40) &&
-            desktop->mouse_x >= (int32_t)menu_x && desktop->mouse_x < (int32_t)(menu_x + menu_w)) {
-            fb_fill_rect(menu_x + 5, item_y, menu_w - 10, 40, 0x00e0e0e0);
+static void wm_taskbar_on_event(struct wm_widget *widget, struct wm_event *event) {
+    (void)widget;
+    if (event->type == WM_EVENT_MOUSE_PRESS && (event->buttons & 1)) {
+        if (event->x >= 8 && event->x <= 158) {
+            wm_show_start_menu();
+        } else {
+            // Close start menu if clicking elsewhere on taskbar
+            start_menu_visible = 0;
+            
+            // Check window tabs
+            int32_t tab_x = 165;
+            for (uint32_t i = 0; i < desktop->window_count; ++i) {
+                if (event->x >= tab_x && event->x < tab_x + 120) {
+                    struct wm_window *win = desktop->windows[i];
+                    if (win->minimized) {
+                        // Restore minimized window
+                        win->minimized = 0;
+                        win->widget.visible = 1;
+                        wm_focus_window(win);
+                    } else if (win->widget.focused) {
+                        // Minimize focused window
+                        win->minimized = 1;
+                        win->widget.visible = 0;
+                        win->widget.focused = 0;
+                        desktop->needs_redraw = 1;
+                    } else {
+                        // Focus other window
+                        wm_focus_window(win);
+                    }
+                    break;
+                }
+                tab_x += 124;
+            }
         }
-        
-        // Icon placeholder with color
-        fb_fill_rect_rounded(menu_x + 10, item_y + 4, 32, 32, 4, icon_colors[i]);
-        fb_draw_string(menu_x + 15, item_y + 14, ">", 0x00ffffff, 0);
-        
-        // Item text
-        fb_draw_string(menu_x + 55, item_y + 14, menu_items[i], 0x00000000, 0);
     }
 }
 
@@ -1025,13 +948,13 @@ void wm_draw_taskbar(void) {
                            current_theme.title_bar_color, 0x00282828);
     
     // Start button with logo (left side) - clearly visible
-    uint32_t start_color = start_menu_visible ? 0x00aa4444 : current_theme.accent_color;
-    fb_fill_rect_rounded(8, y + 6, 44, taskbar_h - 12, 6, start_color);
-    fb_fill_rect_rounded(10, y + 8, 40, taskbar_h - 16, 4, 0x00ffffff); // White inner
-    fb_draw_string(20, y + 14, "D", 0x00000000, 0); // D for DevilCore
+    uint32_t start_color = start_menu_visible ? 0x00aa4444 : 0x002a2a4e;
+    fb_fill_rect_rounded(8, y + 4, 150, taskbar_h - 8, 8, start_color);
+    logo32_draw(12, y + 6);
+    fb_draw_string(50, y + 14, "DevilCore Platinum", 0x00ffffff, 0);
     
     // Window tabs area (center-left) - start after start button
-    int32_t tab_x = 65;
+    int32_t tab_x = 165;
     int32_t max_tab_x = screen_w - 250; // Leave room for system tray
     
     for (uint32_t i = 0; i < desktop->window_count && tab_x < max_tab_x; ++i) {
@@ -1102,11 +1025,6 @@ void wm_draw_taskbar(void) {
     
     // Draw separator line on right edge of taskbar area
     fb_draw_line(screen_w - 1, y, screen_w - 1, screen_h, 0x00101010);
-    
-    // Draw start menu if visible
-    if (start_menu_visible) {
-        wm_draw_start_menu();
-    }
 }
 
 #include "browser.h"
@@ -1749,10 +1667,6 @@ void wm_handle_key(uint8_t key, uint8_t modifiers) {
 struct wm_desktop *wm_get_desktop(void) {
     return desktop;
 }
-
-extern void open_terminal(void);
-extern void show_sysinfo(void);
-extern void browser_open(void);
 
 // Forward declaration for shortcut handler (defined at end of file)
 void wm_handle_shortcuts(uint8_t key, uint8_t modifiers);

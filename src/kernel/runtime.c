@@ -3,21 +3,65 @@
 #include <stdbool.h>
 
 void *memcpy(void *restrict dest, const void *restrict src, size_t n) {
-    uint8_t *restrict dst = (uint8_t *)dest;
-    const uint8_t *restrict source = (const uint8_t *)src;
-
-    for (size_t i = 0; i < n; ++i) {
-        dst[i] = source[i];
+    uint64_t *d64 = (uint64_t *)dest;
+    const uint64_t *s64 = (const uint64_t *)src;
+    
+    size_t n64 = n / 64; // 8 * 8-byte blocks
+    for (size_t i = 0; i < n64; i++) {
+        d64[0] = s64[0];
+        d64[1] = s64[1];
+        d64[2] = s64[2];
+        d64[3] = s64[3];
+        d64[4] = s64[4];
+        d64[5] = s64[5];
+        d64[6] = s64[6];
+        d64[7] = s64[7];
+        d64 += 8;
+        s64 += 8;
+    }
+    
+    // Remaining 8-byte blocks
+    n64 = (n % 64) / 8;
+    for (size_t i = 0; i < n64; i++) {
+        *d64++ = *s64++;
+    }
+    
+    uint8_t *d8 = (uint8_t *)d64;
+    const uint8_t *s8 = (const uint8_t *)s64;
+    for (size_t i = 0; i < n % 8; i++) {
+        d8[i] = s8[i];
     }
 
     return dest;
 }
 
 void *memset(void *dest, int value, size_t n) {
-    uint8_t *dst = (uint8_t *)dest;
-
-    for (size_t i = 0; i < n; ++i) {
-        dst[i] = (uint8_t)value;
+    uint8_t v8 = (uint8_t)value;
+    uint64_t v64 = (uint64_t)v8 | ((uint64_t)v8 << 8) | ((uint64_t)v8 << 16) | ((uint64_t)v8 << 24) |
+                   ((uint64_t)v8 << 32) | ((uint64_t)v8 << 40) | ((uint64_t)v8 << 48) | ((uint64_t)v8 << 56);
+                   
+    uint64_t *d64 = (uint64_t *)dest;
+    size_t n64 = n / 64;
+    for (size_t i = 0; i < n64; i++) {
+        d64[0] = v64;
+        d64[1] = v64;
+        d64[2] = v64;
+        d64[3] = v64;
+        d64[4] = v64;
+        d64[5] = v64;
+        d64[6] = v64;
+        d64[7] = v64;
+        d64 += 8;
+    }
+    
+    n64 = (n % 64) / 8;
+    for (size_t i = 0; i < n64; i++) {
+        *d64++ = v64;
+    }
+    
+    uint8_t *d8 = (uint8_t *)d64;
+    for (size_t i = 0; i < n % 8; i++) {
+        d8[i] = v8;
     }
 
     return dest;

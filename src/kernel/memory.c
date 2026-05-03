@@ -1,4 +1,5 @@
 #include "memory.h"
+#include "spinlock.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -37,6 +38,8 @@ struct free_block {
     struct free_block *next;
 };
 static struct free_block *free_list = NULL;
+static spinlock_t heap_lock;
+static spinlock_t pmm_lock;
 
 static inline uint64_t align_up_u64(uint64_t value, uint64_t align) {
     return (value + align - 1) & ~(align - 1);
@@ -145,7 +148,7 @@ void paging_map_page(uint64_t virtual_address, uint64_t physical_address, uint64
                 return;
             }
             zero_page(phys_to_virt(new_page));
-            *entry = new_page | PAGE_PRESENT | PAGE_WRITABLE;
+            *entry = new_page | PAGE_PRESENT | flags; // Use provided flags for intermediate tables
         } else if (*entry & (1ULL << 7)) {
             return; // It's a huge page, no need to map a 4K page here
         }
@@ -159,16 +162,19 @@ void paging_map_page(uint64_t virtual_address, uint64_t physical_address, uint64
 }
 
 void *pmm_alloc_page(void) {
+    spin_lock(&pmm_lock);
     for (uint64_t index = 0; index < g_total_pages; ++index) {
         if (!bitmap_test(index)) {
             bitmap_set(index);
             if (g_free_pages > 0) {
                 --g_free_pages;
             }
+            spin_unlock(&pmm_lock);
             return (void *)(uintptr_t)(index * PAGE_SIZE);
         }
     }
 
+    spin_unlock(&pmm_lock);
     return NULL;
 }
 
@@ -178,8 +184,10 @@ void pmm_free_page(void *physical_address) {
         return;
     }
 
+    spin_lock(&pmm_lock);
     bitmap_clear(index);
     ++g_free_pages;
+    spin_unlock(&pmm_lock);
 }
 
 uint64_t pmm_total_pages(void) {
@@ -187,7 +195,10 @@ uint64_t pmm_total_pages(void) {
 }
 
 uint64_t pmm_free_pages(void) {
-    return g_free_pages;
+    spin_lock(&pmm_lock);
+    uint64_t free = g_free_pages;
+    spin_unlock(&pmm_lock);
+    return free;
 }
 
 uint64_t hhdm_offset(void) {
@@ -220,6 +231,8 @@ void *kmalloc(size_t size) {
         return NULL;
     }
     
+    spin_lock(&heap_lock);
+    
     // Align size to 16 bytes
     size = (size + 15) & ~(size_t)15;
     
@@ -229,6 +242,7 @@ void *kmalloc(size_t size) {
         if ((*p)->size >= size) {
             struct free_block *found = *p;
             *p = found->next;
+            spin_unlock(&heap_lock);
             return (void *)found;
         }
         p = &(*p)->next;
@@ -240,11 +254,13 @@ void *kmalloc(size_t size) {
     }
     
     if (heap_offset + size > (heap_used_pages * PAGE_SIZE)) {
+        spin_unlock(&heap_lock);
         return NULL;
     }
     
     void *result = heap_base + heap_offset;
     heap_offset += size;
+    spin_unlock(&heap_lock);
     return result;
 }
 
@@ -274,6 +290,9 @@ void memory_init(
     struct limine_kernel_address_response *kernel_address
 ) {
     g_hhdm_offset = hhdm->offset;
+    
+    spin_init(&heap_lock);
+    spin_init(&pmm_lock);
 
     for (size_t i = 0; i < sizeof(pmm_bitmap); ++i) {
         pmm_bitmap[i] = 0xff;

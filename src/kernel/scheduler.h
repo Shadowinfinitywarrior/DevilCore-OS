@@ -45,6 +45,8 @@ struct task_context {
     uint64_t cr3;
 };
 
+struct mm_struct;
+
 struct task {
     pid_t pid;
     pid_t ppid;
@@ -76,6 +78,9 @@ struct task {
     
     void *fd_table[32];
     int32_t exit_status;
+    
+    // Memory management
+    struct mm_struct *mm;
     
     // For CFS scheduler data
     void *sched_data;

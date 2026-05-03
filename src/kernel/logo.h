@@ -110,4 +110,6 @@ static const uint32_t logo32_pixels[32][32] = {
 // Boot logo animation frames (8 frames for spinning effect)
 static const uint32_t logo_frames = 8;
 
+void logo_raw_draw(int32_t x, int32_t y);
+
 #endif

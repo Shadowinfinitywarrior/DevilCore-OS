@@ -38,14 +38,15 @@ void gdt_init(void) {
     gdt_p.base = (uint64_t)&gdt;
 
     gdt_set_gate(0, 0, 0, 0, 0);                // Null segment
-    gdt_set_gate(1, 0, 0xFFFFFFFF, 0x9A, 0xA0); // Kernel Code (64-bit)
-    gdt_set_gate(2, 0, 0xFFFFFFFF, 0x92, 0xA0); // Kernel Data (64-bit)
-    gdt_set_gate(3, 0, 0xFFFFFFFF, 0xFA, 0xA0); // User Code (64-bit)
-    gdt_set_gate(4, 0, 0xFFFFFFFF, 0xF2, 0xA0); // User Data (64-bit)
+    gdt_set_gate(1, 0, 0xFFFFFFFF, 0x9A, 0xA0); // Kernel Code (64-bit) - Ring 0
+    gdt_set_gate(2, 0, 0xFFFFFFFF, 0x92, 0xA0); // Kernel Data (64-bit) - Ring 0
+    gdt_set_gate(3, 0, 0xFFFFFFFF, 0xFA, 0xA0); // User Code (64-bit) - Ring 3
+    gdt_set_gate(4, 0, 0xFFFFFFFF, 0xF2, 0xA0); // User Data (64-bit) - Ring 3
 
     memset(&tss, 0, sizeof(struct tss_entry));
     tss.iopb_offset = sizeof(struct tss_entry);
     
+    // TSS is entries 5 and 6 (it takes 16 bytes in 64-bit mode)
     write_tss(5, (uint64_t)&tss, sizeof(struct tss_entry) - 1);
 
     gdt_flush((uint64_t)&gdt_p);

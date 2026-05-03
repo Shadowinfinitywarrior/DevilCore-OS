@@ -42,6 +42,9 @@
 #define LIMINE_RSDP_REQUEST \
     { LIMINE_COMMON_MAGIC, 0xc5e77b6b397e7b43ULL, 0x27637845accdcf3cULL }
 
+#define LIMINE_SMP_REQUEST \
+    { LIMINE_COMMON_MAGIC, 0x95a1a850dfa471ecULL, 0xa0b1570722bc2cebULL }
+
 #define LIMINE_MEMMAP_USABLE 0
 #define LIMINE_MEMMAP_RESERVED 1
 #define LIMINE_MEMMAP_ACPI_RECLAIMABLE 2
@@ -148,6 +151,29 @@ struct limine_rsdp_request {
     uint64_t id[4];
     uint64_t revision;
     struct limine_rsdp_response *response;
+};
+
+struct limine_smp_info {
+    uint32_t processor_id;
+    uint32_t lapic_id;
+    uint64_t reserved;
+    void (*goto_address)(struct limine_smp_info *);
+    uint64_t extra_argument;
+};
+
+struct limine_smp_response {
+    uint64_t revision;
+    uint32_t flags;
+    uint32_t bsp_lapic_id;
+    uint64_t cpu_count;
+    struct limine_smp_info **cpus;
+};
+
+struct limine_smp_request {
+    uint64_t id[4];
+    uint64_t revision;
+    struct limine_smp_response *response;
+    uint64_t flags;
 };
 
 #endif

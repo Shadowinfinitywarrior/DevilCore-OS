@@ -1,6 +1,8 @@
 #include "scheduler.h"
-
 #include "memory.h"
+#include "vma.h"
+#include "slab.h"
+#include "spinlock.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -14,6 +16,8 @@ struct task *current_task;
 struct task *idle_task;
 struct schedule_queue run_queue;
 struct schedule_queue sleep_queue;
+
+static spinlock_t sched_lock;
 
 static struct task tasks[MAX_TASKS];
 static uint32_t task_count;
@@ -53,9 +57,31 @@ static void task_setup_kernel_stack(struct task *task, void (*entry)(void)) {
 static void task_setup_user_stack(struct task *task, void (*entry)(void)) {
     uint64_t *stack = (uint64_t *)((uint64_t)task->user_stack + USER_STACK_SIZE);
     
-    *--stack = 0;               // Alignment dummy
-    *--stack = 0;               // Alignment dummy
+    // IRET stack frame for Ring 3
+    *--stack = 0x23;            // SS (User Data Selector | 3)
+    *--stack = (uint64_t)task->user_stack + USER_STACK_SIZE; // RSP
+    *--stack = 0x202;           // RFLAGS (IF bit set)
+    *--stack = 0x1B;            // CS (User Code Selector | 3)
+    *--stack = (uint64_t)entry; // RIP
     
+    // Context switch expects registers as well
+    *--stack = 0;     // r15
+    *--stack = 0;     // r14
+    *--stack = 0;     // r13
+    *--stack = 0;     // r12
+    *--stack = 0;     // r11
+    *--stack = 0;     // r10
+    *--stack = 0;     // r9
+    *--stack = 0;     // r8
+    *--stack = 0;     // rbp
+    *--stack = 0;     // rdi
+    *--stack = 0;     // rsi
+    *--stack = 0;     // rdx
+    *--stack = 0;     // rcx
+    *--stack = 0;     // rbx
+    *--stack = 0;     // rax
+    *--stack = 0x202; // rflags dummy (popfq)
+
     task->rsp = (uint64_t)stack;
     task->rip = (uint64_t)entry;
 }
@@ -80,6 +106,8 @@ void scheduler_init(void) {
     memset(&tasks, 0, sizeof(tasks));
     memset(&run_queue, 0, sizeof(run_queue));
     memset(&sleep_queue, 0, sizeof(sleep_queue));
+    
+    spin_init(&sched_lock);
     
     task_count = 0;
     next_pid = 1;
@@ -112,7 +140,17 @@ void scheduler_init(void) {
     idle_task->name[63] = '\0';
     idle_task->flags = TASK_FLAG_KERNEL;
     idle_task->state = TASK_READY;
+    
+    // Initialize memory management structure
+    idle_task->mm = kmalloc_slab(sizeof(struct mm_struct));
+    if (idle_task->mm) {
+        mm_init(idle_task->mm);
+    }
+    
     idle_task->kernel_stack = (uint64_t)kmalloc(KERNEL_STACK_SIZE);
+    if (idle_task->mm) {
+        mm_add_vma(idle_task->mm, idle_task->kernel_stack, KERNEL_STACK_SIZE, VMA_READ | VMA_WRITE);
+    }
     idle_task->user_stack = 0;
     serial_write_string("[DBG] idle kernel_stack: 0x");
     serial_write_hex_u64(idle_task->kernel_stack);
@@ -191,10 +229,19 @@ pid_t task_create(const char *name, void (*entry)(void), uint32_t flags) {
     task->state = TASK_READY;
     task->exit_code = 0;
     
+    // Initialize memory management structure
+    task->mm = kmalloc_slab(sizeof(struct mm_struct));
+    if (task->mm) {
+        mm_init(task->mm);
+    }
+    
     if (flags & TASK_FLAG_KERNEL) {
         task->kernel_stack = (uint64_t)kmalloc(KERNEL_STACK_SIZE);
         if (task->kernel_stack == 0) {
             return -1;
+        }
+        if (task->mm) {
+            mm_add_vma(task->mm, task->kernel_stack, KERNEL_STACK_SIZE, VMA_READ | VMA_WRITE);
         }
         task_setup_kernel_stack(task, entry);
         task->cr3 = kernel_cr3;
@@ -207,6 +254,9 @@ pid_t task_create(const char *name, void (*entry)(void), uint32_t flags) {
         if (task->user_stack == 0) {
             kfree((void *)task->kernel_stack);
             return -1;
+        }
+        if (task->mm) {
+            mm_add_vma(task->mm, task->user_stack, USER_STACK_SIZE, VMA_READ | VMA_WRITE | VMA_USER | VMA_STACK);
         }
         task_setup_user_stack(task, entry);
         
@@ -309,6 +359,7 @@ int scheduler_add_task(struct task *task) {
         return -1;
     }
     
+    spin_lock(&sched_lock);
     if (run_queue.tail == NULL) {
         run_queue.head = task;
         run_queue.tail = task;
@@ -319,6 +370,7 @@ int scheduler_add_task(struct task *task) {
     
     task->next = NULL;
     run_queue.count++;
+    spin_unlock(&sched_lock);
     
     return 0;
 }
@@ -328,6 +380,7 @@ int scheduler_remove_task(struct task *task) {
         return -1;
     }
     
+    spin_lock(&sched_lock);
     struct task *prev = NULL;
     struct task *current = run_queue.head;
     
@@ -345,6 +398,7 @@ int scheduler_remove_task(struct task *task) {
             
             run_queue.count--;
             task->next = NULL;
+            spin_unlock(&sched_lock);
             return 0;
         }
         
@@ -352,11 +406,14 @@ int scheduler_remove_task(struct task *task) {
         current = current->next;
     }
     
+    spin_unlock(&sched_lock);
     return -1;
 }
 
 void scheduler_schedule(void) {
+    spin_lock(&sched_lock);
     if (run_queue.head == NULL) {
+        spin_unlock(&sched_lock);
         return;
     }
     
@@ -370,6 +427,7 @@ void scheduler_schedule(void) {
     run_queue.count--;
     
     next_task->next = NULL;
+    spin_unlock(&sched_lock);
     
     context_switch(prev_task, next_task);
 }

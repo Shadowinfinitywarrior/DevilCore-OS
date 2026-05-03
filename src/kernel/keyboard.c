@@ -38,12 +38,19 @@ void keyboard_init(void) {
     g_alt_pressed = 0;
 
     // Enable the keyboard in PS/2 controller
-    // Wait for the controller to be ready
     uint32_t timeout = 100000;
     while (timeout--) {
         if ((inb(0x64) & 2) == 0) break;
     }
+    outb(0x64, 0xAE); // Enable Port 1 (Keyboard)
+
+    // Wait for the controller to be ready
+    timeout = 100000;
+    while (timeout--) {
+        if ((inb(0x64) & 2) == 0) break;
+    }
     outb(0x64, 0x20); // Read Command Byte
+    
     timeout = 100000;
     uint8_t status = 0;
     while (timeout--) {
@@ -92,11 +99,17 @@ static char scancode_to_char(uint8_t scancode) {
 }
 
 void keyboard_interrupt(void) {
-    if ((inb(0x64) & 0x01) == 0) {
+    uint8_t status = inb(0x64);
+    if ((status & 0x01) == 0) {
         return;
+    }
+    if ((status & 0x20) != 0) {
+        return; // Mouse data, don't read it here
     }
 
     uint8_t scancode = inb(0x60);
+    // serial_write_string(" K:");
+    // serial_write_hex_u64(scancode);
 
     // Handle extended scancodes (0xE0 prefix)
     if (scancode == 0xE0) {

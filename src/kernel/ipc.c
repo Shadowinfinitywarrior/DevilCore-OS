@@ -40,7 +40,7 @@ msg_queue_t *msg_queue_create(uint32_t owner_pid, uint32_t capacity) {
     queue->count = 0;
     queue->owner_pid = owner_pid;
     
-    spinlock_init(&queue->lock);
+    spin_init(&queue->lock);
     event_init(&queue->not_empty);
     event_init(&queue->not_full);
     
@@ -57,11 +57,11 @@ void msg_queue_destroy(msg_queue_t *queue) {
 int msg_queue_send(msg_queue_t *queue, message_t *msg, bool blocking) {
     if (!queue || !msg) return -1;
     
-    spinlock_acquire(&queue->lock);
+    spin_lock(&queue->lock);
     
     // Check if full
     if (queue->count >= queue->capacity) {
-        spinlock_release(&queue->lock);
+        spin_unlock(&queue->lock);
         if (blocking) {
             // Wait for space (simplified - should use proper blocking)
             while (queue->count >= queue->capacity) {
@@ -80,18 +80,18 @@ int msg_queue_send(msg_queue_t *queue, message_t *msg, bool blocking) {
     // Signal that queue is not empty
     event_signal(&queue->not_empty);
     
-    spinlock_release(&queue->lock);
+    spin_unlock(&queue->lock);
     return 0;
 }
 
 int msg_queue_receive(msg_queue_t *queue, message_t *msg, bool blocking) {
     if (!queue || !msg) return -1;
     
-    spinlock_acquire(&queue->lock);
+    spin_lock(&queue->lock);
     
     // Check if empty
     if (queue->count == 0) {
-        spinlock_release(&queue->lock);
+        spin_unlock(&queue->lock);
         if (blocking) {
             // Wait for message
             while (queue->count == 0) {
@@ -110,7 +110,7 @@ int msg_queue_receive(msg_queue_t *queue, message_t *msg, bool blocking) {
     // Signal that queue is not full
     event_signal(&queue->not_full);
     
-    spinlock_release(&queue->lock);
+    spin_unlock(&queue->lock);
     return 0;
 }
 

@@ -44,6 +44,7 @@ interrupt_frame_push:
     pushaq
     mov rdi, [rsp + 120] ; vector number
     mov rsi, [rsp + 128] ; error code
+    mov rdx, rsp         ; pointer to registers (context)
     
     call irq_dispatch
     

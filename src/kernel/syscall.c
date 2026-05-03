@@ -1,7 +1,9 @@
 #include "syscall.h"
-
 #include "vfs.h"
 #include "scheduler.h"
+#include "vma.h"
+#include "elf.h"
+#include "isr.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -14,6 +16,22 @@ static uint32_t syscall_count;
 void syscall_init(void) {
     memset(syscall_table, 0, sizeof(syscall_table));
     syscall_count = 0;
+    
+    struct syscall_handler handlers[] = {
+        {SYSCALL_EXIT, "exit", syscall_exit},
+        {SYSCALL_READ, "read", syscall_read},
+        {SYSCALL_WRITE, "write", syscall_write},
+        {SYSCALL_OPEN, "open", syscall_open},
+        {SYSCALL_CLOSE, "close", syscall_close},
+        {SYSCALL_GETPID, "getpid", syscall_getpid},
+        {SYSCALL_MKDIR, "mkdir", syscall_mkdir},
+        {SYSCALL_RMDIR, "rmdir", syscall_rmdir},
+        {SYSCALL_MMAP, "mmap", syscall_mmap},
+    };
+    
+    for (size_t i = 0; i < sizeof(handlers) / sizeof(handlers[0]); ++i) {
+        syscall_register(&handlers[i]);
+    }
 }
 
 int syscall_register(struct syscall_handler *handler) {
@@ -27,7 +45,11 @@ int syscall_register(struct syscall_handler *handler) {
     return 0;
 }
 
-int syscall_handle(uint64_t num, uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3) {
+int syscall_handle(uint64_t num, uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3, struct registers *regs) {
+    if (num == SYSCALL_EXECVE) {
+        return syscall_execve(a0, a1, a2, regs);
+    }
+
     if (num >= SYSCALL_MAX || syscall_table[num].handler == NULL) {
         return -1;
     }
@@ -42,6 +64,28 @@ int syscall_exit(uint64_t status, uint64_t a1, uint64_t a2, uint64_t a3, uint64_
     (void)a4;
     
     task_exit((int32_t)status);
+    return 0;
+}
+
+int syscall_execve(uint64_t path, uint64_t argv, uint64_t envp, struct registers *regs) {
+    (void)argv;
+    (void)envp;
+
+    uint64_t entry_point = 0;
+    if (elf_load((const char *)path, &entry_point) < 0) {
+        return -1;
+    }
+
+    struct task *current = task_get_current();
+    current->flags |= TASK_FLAG_USER;
+    
+    // Modify registers for iretq to return to user mode at the ELF entry point
+    regs->rip = entry_point;
+    regs->cs = 0x1B;      // User Code Selector | 3
+    regs->rflags = 0x202; // IF bit set
+    regs->rsp = (uint64_t)current->user_stack + USER_STACK_SIZE;
+    regs->ss = 0x23;      // User Data Selector | 3
+    
     return 0;
 }
 
@@ -134,4 +178,35 @@ int syscall_rmdir(uint64_t path, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t
     (void)a4;
     
     return vfs_rmdir((const char *)path);
+}
+
+int syscall_mmap(uint64_t addr, uint64_t length, uint64_t prot, uint64_t flags, uint64_t fd) {
+    (void)flags;
+    (void)fd;
+    
+    struct task *current = task_get_current();
+    if (!current || !current->mm) return -1;
+    
+    // If addr is 0, we should find a free region.
+    if (addr == 0) {
+        uint64_t max_addr = 0x40000000; // Start looking from 1GB
+        struct vma *curr = current->mm->vma_list;
+        while (curr) {
+            if (curr->end > max_addr) max_addr = curr->end;
+            curr = curr->next;
+        }
+        addr = (max_addr + 0xfff) & ~0xfffULL;
+    }
+    
+    uint32_t vma_flags = 0;
+    if (prot & 1) vma_flags |= VMA_READ;
+    if (prot & 2) vma_flags |= VMA_WRITE;
+    if (prot & 4) vma_flags |= VMA_EXEC;
+    vma_flags |= VMA_USER;
+    
+    if (mm_add_vma(current->mm, addr, length, vma_flags) == 0) {
+        return (int)addr;
+    }
+    
+    return -1;
 }

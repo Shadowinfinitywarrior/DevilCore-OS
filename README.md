@@ -1,99 +1,139 @@
-# DevilCore OS (v2.0 'Premium Edition')
+# ![DevilCore OS Logo](logo.png)
 
-**Developer:** Mr. Nithish Kathiravan
-**Contact:** nithishkathiravan123@gmail.com / infonity404@gmail.com
-**Phone:** +91 9342358022
+# DevilCore OS v0.5 "Platinum Edition"
+### The Ultimate Bare-Metal Operating System for Cyber Security, Hacking Research, and Systems Engineering.
+
+**Lead Developer:** Mr. Nithish Kathiravan  
+**Contact:** [nithishkathiravan123@gmail.com](mailto:nithishkathiravan123@gmail.com) / [infonity404@gmail.com](mailto:infonity404@gmail.com)  
+**Phone/WhatsApp:** +91 9342358022  
+**Architecture:** x86_64 (Long Mode)  
+**Kernel Type:** Advanced Monolithic / Micro-Inspired  
+**License:** Ethical Hacking Research License  
+**Status:** Platinum Stable v0.5.0
 
 ---
 
-## 1. Overview
-DevilCore OS is an advanced 64-bit operating system designed from the ground up to provide a robust, aesthetic, and functional environment for ethical hacking and systems research. It features a custom micro-kernel inspired architecture with a focus on high-performance graphics, fair scheduling, and modular hardware abstraction.
+## 🛡️ Executive Overview
+DevilCore OS is an elite, 64-bit operating system engineered for the next generation of security researchers. Built entirely from scratch in C and Assembly, it bypasses the bloat of modern kernels to provide direct, deterministic access to hardware. The **Platinum Edition** marks a milestone in responsiveness, stability, and tool integration, featuring a bespoke software compositing engine and an overclocked input stack.
 
-## 2. Technical Architecture Deep Dive
+---
 
-### 2.1 Boot Process & Initialisation
-DevilCore utilizes the Limine bootloader to transition from the firmware environment (BIOS/UEFI) to 64-bit long mode. The boot process follows these stages:
-1. **Bootloader Handover:** Limine provides a memory map, framebuffer information, and a higher-half direct mapping of physical memory.
-2. **GDT & IDT Setup:** The Global Descriptor Table (GDT) is initialized with kernel and user segments. The Interrupt Descriptor Table (IDT) is populated with 256 entries, handling CPU exceptions and hardware IRQs.
-3. **Memory Management:** The Physical Memory Manager (PMM) is initialized using the Limine memory map. The Virtual Memory Manager (VMM) sets up the kernel's own page tables, ensuring isolation and security.
-4. **Slab Allocator:** A specialized allocator is initialized to provide efficient allocation for small kernel structures, minimizing fragmentation.
+## 🚀 1. The Technological Infrastructure
 
-### 2.2 Memory Management (PMM & VMM)
-The PMM uses a bitmap-based approach to track page frame availability. Each bit represents a 4KB page of physical RAM.
-The VMM manages the 4-level paging structure (PML4, PDPT, PD, PT). It provides functions for mapping, unmapping, and remapping virtual addresses to physical frames.
+### 1.1 Kernel Core & Boot Protocol
+*   **Limine Implementation:** Utilizes the Limine boot protocol for transition from UEFI/BIOS to 64-bit Long Mode, ensuring a standardized handover of memory maps and framebuffer pointers.
+*   **Global Descriptor Table (GDT):** Custom 64-bit GDT with specialized segments for Kernel Code/Data and User Code/Data, including TSS (Task State Segment) for hardware-assisted task switching.
+*   **Interrupt Descriptor Table (IDT):** Complete implementation of 256 interrupt gates.
+    *   **Exceptions (0-31):** Full handling for Page Faults, General Protection Faults, and Double Faults with diagnostic register dumps.
+    *   **Hardware IRQs (32-47):** Remapped via the 8259 PIC to avoid conflict with CPU exceptions.
+*   **Advanced System Calls:** Standardized 0x80 interface for user-space applications to request kernel services (I/O, IPC, Tasking).
 
-#### Memory Compression (DevilCompress)
-DevilCore features a unique RLE-based memory compression algorithm that compresses idle pages in the background, effectively increasing the available memory without physical hardware upgrades.
+### 1.2 Ultra-Low Latency Graphics (Platinum Engine)
+*   **100Hz Refresh Rate:** The kernel-level software compositor (DevilUI) is optimized to render at a consistent 100 frames per second, eliminating input lag.
+*   **64-Bit Data Path Optimization:** Core memory operations (`memcpy`, `memset`) utilize unrolled 64-bit loops to maximize memory bandwidth utilization during screen flips.
+*   **Double Buffering:** Implements a full-screen backbuffer to eliminate flickering and tearing during complex window operations.
+*   **Glass-Morphism Effects:** Real-time alpha-blending and vertical/horizontal gradients provide a modern "Platinum" aesthetic on bare metal.
+*   **Centering Engine:** Dynamic resolution-independent centering for the boot splash and system dialogs.
 
-### 2.3 CFS Scheduler (Completely Fair Scheduler)
-The DevilCore scheduler is based on the CFS algorithm used in Linux.
-- **Vruntime:** Each task tracks its "virtual runtime," which is the amount of time it has spent on the CPU, weighted by its priority.
-- **Red-Black Tree:** Tasks are stored in a self-balancing red-black tree, indexed by their vruntime.
-- **Selection:** The scheduler always picks the task with the smallest vruntime (the leftmost node in the tree), ensuring O(log N) complexity for both insertion and selection.
+### 1.3 High-Fidelity Input Stack
+*   **Overclocked PS/2 Mouse Driver:** 
+    *   **200Hz Sampling:** Requests maximum hardware polling for extreme smoothness.
+    *   **Resolution Level 3:** High-precision positional data for pixel-perfect accuracy.
+*   **Non-Linear Acceleration:** A custom mathematical curve maps hand movement to cursor velocity. Slow movements are precise (1:1), while rapid "flicks" accelerate up to 6x for fast navigation.
+*   **Robust Synchronization:** A 3-byte state machine verifies every incoming PS/2 packet, automatically re-aligning the stream if desynchronization occurs during high-velocity movements.
 
-### 2.4 Virtual File System (VFS)
-The VFS provides a unified interface for accessing different filesystem types and hardware devices.
-- **Node-based Abstraction:** Every file, directory, and device is represented as a `vfs_node`.
-- **Mount Points:** Filesystems like FAT32 are mounted onto the VFS tree.
-- **DevFS:** Special device files (e.g., `/dev/mouse`, `/dev/fb0`) allow standard file operations (read/write) to interact with hardware drivers.
+---
 
-## 3. The DevilComp Compositor & GUI
+## 🧠 2. Advanced Memory & Task Management
 
-### 3.1 Graphical Pipeline
-DevilCore's graphics stack is built for beauty and performance.
-1. **Framebuffer Driver:** Manages the linear framebuffer provided by the bootloader.
-2. **Backbuffer:** All rendering is performed on an off-screen backbuffer to prevent flickering.
-3. **Compositing Engine:** Instead of windows drawing directly to the screen, each window has its own surface. The compositor blends these surfaces together, supporting:
-    - **Alpha Blending:** Transparent window borders and shadows.
-    - **Damage Tracking:** Only redrawing the parts of the screen that actually changed.
-    - **Glass Effects:** Real-time gradient and transparency effects on title bars.
+### 2.1 Paging & Virtual Memory (VMM)
+*   **4-Level Paging:** Implementation of PML4, PDPT, PD, and PT structures for full 64-bit address space management.
+*   **Higher-Half Kernel:** The kernel is mapped to `0xFFFFFFFF80000000`, reserving the lower address space for future high-performance user applications.
+*   **Page Fault Mitigation:** Robust MMIO mapping logic ensures hardware drivers (like E1000) have secure, mapped access to their control registers.
 
-### 3.2 DevilUI Widget Toolkit
-DevilUI is an object-oriented toolkit written in C.
-- **Hierarchy:** Widgets are organized in a parent-child tree.
-- **Event Propagation:** Mouse and keyboard events flow through the tree, allowing for complex interactive components.
-- **Theme System:** Supports dynamic theme switching (Dark, Blue, Green, etc.) by modifying a global theme structure.
+### 2.2 Physical Memory Manager (PMM)
+*   **Bitmap Allocation:** Every 4KB frame of physical RAM is tracked in a high-speed bitmap.
+*   **O(1) Performance:** Optimized search algorithms ensure nearly instantaneous page allocation and deallocation.
 
-## 4. Integrated Applications
+### 2.3 CFS (Completely Fair Scheduler)
+*   **Virtual Runtime (vruntime):** Ensures that every task receives a mathematically fair share of the CPU.
+*   **Red-Black Tree Logic:** Tasks are stored in a balanced tree structure, allowing for O(log N) scheduling complexity.
+*   **Priority Weighting:** Supports nice values (-20 to 19) for fine-grained control over task importance.
 
-### 4.1 DevilCore Terminal
-A high-performance terminal emulator supporting ASCII art, color escape codes, and a custom shell. The terminal is optimized for minimal lag and smooth scrolling.
+### 2.4 Slab Allocator
+*   **Object Caching:** Specialized caches for frequently used structures (tasks, nodes, packets) to prevent heap fragmentation and improve allocation speed.
 
-### 4.2 Privacy Browser
-A simulated web browser environment focused on privacy. It features tabbed browsing, a secure address bar, and integrated ad-blocking logic.
+### 2.5 DevilCompress System
+*   **Real-Time Compression:** Background RLE-based memory compression that shrinks idle pages, effectively "increasing" available system RAM by up to 30% without hardware changes.
 
-### 4.3 System Monitor
-A live dashboard showing real-time CPU usage (with a scrolling graph), memory consumption, and a process list. It allows for process management, including killing unresponsive tasks.
+---
 
-### 4.4 Quick Notes & Calculator
-Productivity tools designed with a "hacker" aesthetic. The Notes app supports multi-line editing and persistent storage (planned), while the Calculator includes a scientific mode with history tracking.
+## 📡 3. Networking & Security Suite
 
-### 4.5 Calendar
-A newly added calendar application that provides a clean, monthly view of the year 2026, integrated directly into the taskbar and start menu.
+### 3.1 Gigabit Ethernet (Intel E1000)
+*   **Direct MMIO:** High-performance driver with explicit memory mapping for the Intel 8254x series.
+*   **Ring-Buffer Descriptors:** Optimized TX/RX queues for low-latency network communication.
 
-## 5. Security Features
-- **Ethical Hacking Environment:** Integrated tools for network scanning (ARP/ICMP) and system auditing.
-- **Isolation:** Kernel/User mode separation and paging-based memory protection.
-- **Encrypted Filesystem (Planned):** Future support for AES-XTS encrypted partitions.
+### 3.2 Security Research Tools
+*   **Network Sniffer (Sniffer.app):** Real-time ethernet frame analyzer capable of capturing and logging ARP, ICMP, and UDP packets.
+*   **Severity Highlighting:** Automatically flags suspicious or diagnostic traffic in the live log.
+*   **Protocol Handlers:**
+    *   **ARP:** Full Address Resolution Protocol support for network discovery.
+    *   **ICMP:** Integrated "Ping" capabilities for connectivity diagnostics.
 
-## 6. Development & Building
+---
 
-### Prerequisites
-- `x86_64-elf-gcc` (or `x86_64-linux-gnu-gcc`)
-- `nasm`
-- `make`
-- `xorriso` (for ISO generation)
-- `qemu-system-x86_64`
+## 📂 4. The Platinum Application Ecosystem
+
+| App Name | Description | Tech Specs |
+| :--- | :--- | :--- |
+| **DevilShell** | The primary CLI interface. | Support for `neofetch`, `lspci`, `clear`, and `whoami`. |
+| **File Manager** | VFS-based explorer. | Recursive directory walking, file-type icons, and size reporting. |
+| **Network Scanner** | Live packet analyzer. | Severity-based logging and raw frame inspection. |
+| **System Monitor** | Live kernel telemetry. | Real-time memory progress bars and CPU pulse animations. |
+| **Text Editor** | Specialized code editor. | Basic C-style syntax highlighting and VFS save/load. |
+| **Calculator** | Engineering calculator. | Scientific mode, history tape, and dynamic UI scaling. |
+| **About System** | Branding and stats. | Centered high-fidelity logo and detailed versioning info. |
+
+---
+
+## 🛠️ 5. Development & Engineering
+
+### Build Requirements
+*   **Compilers:** `x86_64-elf-gcc` or `x86_64-linux-gnu-gcc`
+*   **Assembler:** `nasm`
+*   **Linker:** `ld` (GNU Linker) with custom `linker.ld` script.
+*   **ISO Tooling:** `xorriso` and `grub-mkrescue` compatibility.
 
 ### Build Commands
 ```bash
-make all      # Build the kernel and ISO
-make run      # Launch in QEMU
-make clean    # Remove build artifacts
+# Clean previous build artifacts
+make clean
+
+# Compile the entire Platinum kernel and apps
+make all
+
+# Launch the environment in QEMU (Recommended)
+make run
 ```
 
-## 7. Contact & Support
-For support, contributions, or inquiries, please contact:
-**Mr. Nithish Kathiravan**
-- **Email:** nithishkathiravan123@gmail.com / infonity404@gmail.com
-- **Phone:** +91 9342358022
+---
+
+## 🗺️ 6. Engineering Roadmap
+*   [ ] **USB 3.0 (XHCI) Integration:** Support for modern external peripherals.
+*   [ ] **Lua Scripting Engine:** High-level scripting for rapid security tool development.
+*   [ ] **FAT32 Write Support:** Enabling permanent storage on disk partitions.
+*   [ ] **Audio Engine:** Implementation of Intel HD Audio for system alerts.
+
+---
+
+## 🤝 Contact & Global Support
+For technical inquiries, collaboration on the **DevilCore Ethical Hacking Framework**, or custom kernel module development, contact:
+
+**Mr. Nithish Kathiravan**  
+📧 **Email:** [nithishkathiravan123@gmail.com](mailto:nithishkathiravan123@gmail.com)  
+🌐 **GitHub:** [Shadowinfinitywarrior](https://github.com/Shadowinfinitywarrior/DevilCore-OS)  
+📞 **WhatsApp:** +91 9342358022
+
+---
+*© 2026 DevilCore Systems. Developed for Research, Education, and Security Audit Purposes. All Rights Reserved.*
